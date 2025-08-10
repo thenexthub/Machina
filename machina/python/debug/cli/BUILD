@@ -1,0 +1,302 @@
+load("//machina:strict.default.bzl", "py_strict_binary", "py_strict_library", "py_strict_test")
+load("//machina:machina.default.bzl", "cuda_py_strict_test")
+
+package(
+    # copybara:uncomment default_applicable_licenses = ["//machina:license"],
+    default_visibility = ["//machina:internal"],
+    licenses = ["notice"],
+)
+
+py_strict_library(
+    name = "profile_analyzer_cli",
+    srcs = ["profile_analyzer_cli.py"],
+    deps = [
+        ":cli_shared",
+        ":command_parser",
+        ":debugger_cli_common",
+        ":ui_factory",
+        "//machina/python/debug/lib:profiling",
+        "//machina/python/debug/lib:source_utils",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_strict_library(
+    name = "base_ui",
+    srcs = ["base_ui.py"],
+    deps = [
+        ":cli_config",
+        ":command_parser",
+        ":debugger_cli_common",
+    ],
+)
+
+py_strict_library(
+    name = "readline_ui",
+    srcs = ["readline_ui.py"],
+    deps = [
+        ":base_ui",
+        ":debugger_cli_common",
+    ],
+)
+
+py_strict_library(
+    name = "ui_factory",
+    srcs = ["ui_factory.py"],
+    deps = [
+        ":readline_ui",  # build_cleaner keep.
+    ],
+)
+
+py_strict_library(
+    name = "command_parser",
+    srcs = ["command_parser.py"],
+)
+
+py_strict_library(
+    name = "tensor_format",
+    srcs = ["tensor_format.py"],
+    deps = [
+        ":debugger_cli_common",
+        "//machina/python/debug/lib:debug_data",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_strict_library(
+    name = "cli_shared",
+    srcs = ["cli_shared.py"],
+    deps = [
+        ":command_parser",
+        ":debugger_cli_common",
+        ":tensor_format",
+        "//machina/python/debug/lib:common",
+        "//machina/python/framework:ops",
+        "//machina/python/framework:tensor",
+        "//machina/python/ops:variables",
+        "//machina/python/platform:gfile",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_strict_library(
+    name = "evaluator",
+    srcs = ["evaluator.py"],
+    deps = [
+        "//machina/python/debug/lib:debug_data",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_strict_library(
+    name = "analyzer_cli",
+    srcs = ["analyzer_cli.py"],
+    deps = [
+        ":cli_config",
+        ":cli_shared",
+        ":command_parser",
+        ":debugger_cli_common",
+        ":evaluator",
+        ":ui_factory",
+        "//machina/python/debug/lib:debug_graphs",
+        "//machina/python/debug/lib:source_utils",
+    ],
+)
+
+py_strict_library(
+    name = "cli_config",
+    srcs = ["cli_config.py"],
+    deps = [
+        ":debugger_cli_common",
+        "//machina/python/platform:gfile",
+    ],
+)
+
+py_strict_library(
+    name = "debugger_cli_common",
+    srcs = ["debugger_cli_common.py"],
+    deps = [
+        "//machina/python/client:pywrap_tf_session",
+        "//machina/python/platform:gfile",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_strict_binary(
+    name = "offline_analyzer",
+    srcs = ["offline_analyzer.py"],
+    deps = [":offline_analyzer_lib"],
+)
+
+py_strict_library(
+    name = "offline_analyzer_lib",
+    srcs = ["offline_analyzer.py"],
+    deps = [
+        ":analyzer_cli",
+        "//machina/python/debug/lib:debug_data",
+        "@absl_py//absl:app",
+    ],
+)
+
+py_strict_test(
+    name = "readline_ui_test",
+    size = "small",
+    srcs = ["readline_ui_test.py"],
+    tags = ["no_windows"],  # TODO(b/214427155)
+    deps = [
+        ":cli_config",
+        ":debugger_cli_common",
+        ":readline_ui",
+        ":ui_factory",
+        "//machina/python/framework:test_lib",
+        "//machina/python/lib/io:file_io",
+        "//machina/python/platform:gfile",
+        "//machina/python/platform:test",
+    ],
+)
+
+py_strict_test(
+    name = "debugger_cli_common_test",
+    size = "small",
+    srcs = ["debugger_cli_common_test.py"],
+    deps = [
+        ":debugger_cli_common",
+        "//machina/python/client:pywrap_tf_session",
+        "//machina/python/framework:test_lib",
+        "//machina/python/platform:gfile",
+        "//machina/python/platform:test",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_strict_test(
+    name = "cli_config_test",
+    size = "small",
+    srcs = ["cli_config_test.py"],
+    deps = [
+        ":cli_config",
+        "//machina/python/framework:test_lib",
+        "//machina/python/lib/io:file_io",
+        "//machina/python/platform:gfile",
+        "//machina/python/platform:test",
+    ],
+)
+
+py_strict_test(
+    name = "command_parser_test",
+    size = "small",
+    srcs = ["command_parser_test.py"],
+    deps = [
+        ":command_parser",
+        "//machina/python/framework:test_lib",
+        "//machina/python/platform:test",
+    ],
+)
+
+py_strict_test(
+    name = "tensor_format_test",
+    size = "small",
+    srcs = ["tensor_format_test.py"],
+    deps = [
+        ":cli_test_utils",
+        ":tensor_format",
+        "//machina/core:protos_all_py",
+        "//machina/python/debug/lib:debug_data",
+        "//machina/python/framework:test_lib",
+        "//machina/python/platform:test",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_strict_test(
+    name = "cli_shared_test",
+    size = "small",
+    srcs = ["cli_shared_test.py"],
+    deps = [
+        ":cli_shared",
+        ":debugger_cli_common",
+        "//machina/python/framework:constant_op",
+        "//machina/python/framework:errors",
+        "//machina/python/framework:for_generated_wrappers",
+        "//machina/python/framework:sparse_tensor",
+        "//machina/python/framework:test_lib",
+        "//machina/python/ops:variables",
+        "//machina/python/platform:test",
+    ],
+)
+
+py_strict_test(
+    name = "evaluator_test",
+    size = "small",
+    srcs = [
+        "evaluator_test.py",
+    ],
+    tags = ["no_windows"],  # TODO(b/184424727): Enable this test on Windows.
+    deps = [
+        ":evaluator",
+        "//machina/python/debug/lib:debug_data",
+        "//machina/python/framework:test_lib",
+        "//machina/python/platform:client_testlib",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_strict_library(
+    name = "cli_test_utils",
+    srcs = ["cli_test_utils.py"],
+    deps = ["//third_party/py/numpy"],
+)
+
+cuda_py_strict_test(
+    name = "analyzer_cli_test",
+    size = "small",
+    srcs = ["analyzer_cli_test.py"],
+    tags = ["no_windows"],  # TODO: needs investigation on Windows
+    xla_enable_strict_auto_jit = False,  # Node names are different with autojit
+    deps = [
+        ":analyzer_cli",
+        ":cli_config",
+        ":cli_shared",
+        ":cli_test_utils",
+        ":command_parser",
+        ":debugger_cli_common",
+        "//machina/core:protos_all_py",
+        "//machina/python/client:session",
+        "//machina/python/debug/lib:debug_data",
+        "//machina/python/debug/lib:debug_utils",
+        "//machina/python/debug/lib:source_utils",
+        "//machina/python/framework:constant_op",
+        "//machina/python/framework:for_generated_wrappers",
+        "//machina/python/framework:test_lib",
+        "//machina/python/lib/io:file_io",
+        "//machina/python/ops:array_ops",
+        "//machina/python/ops:control_flow_ops",
+        "//machina/python/ops:math_ops",
+        "//machina/python/ops:variable_v1",
+        "//machina/python/ops:while_loop",
+        "//machina/python/platform:client_testlib",
+        "//machina/python/platform:test",
+        "//machina/python/util:tf_inspect",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_strict_test(
+    name = "profile_analyzer_cli_test",
+    size = "small",
+    srcs = ["profile_analyzer_cli_test.py"],
+    deps = [
+        ":debugger_cli_common",
+        ":profile_analyzer_cli",
+        "//machina/core:protos_all_py",
+        "//machina/python/client:session",
+        "//machina/python/framework:constant_op",
+        "//machina/python/framework:for_generated_wrappers",
+        "//machina/python/framework:test_lib",
+        "//machina/python/ops:math_ops",
+        "//machina/python/ops:while_loop",
+        "//machina/python/platform:client_testlib",
+        "//machina/python/platform:test",
+        "//machina/python/util:tf_inspect",
+    ],
+)

@@ -1,0 +1,4 @@
+# Text form of machina.tf2xla.Config proto.
+fetch {
+  id { node_name: "result" }
+}

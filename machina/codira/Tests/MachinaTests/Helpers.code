@@ -1,0 +1,85 @@
+/*
+ *
+ * Copyright (c) 2025, NeXTHub Corporation. All Rights Reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ * 
+ * Author: Tunjay Akbarli
+ * Date: Sunday, August 10, 2025.
+ * 
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at:
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ * 
+ * Please contact NeXTHub Corporation, 651 N Broad St, Suite 201,
+ * Middletown, DE 19709, New Castle County, USA.
+ *
+ */
+
+import XCTest
+
+@testable import Machina
+
+internal fn assertEqual<T: MachinaFloatingPoint>(
+  _ x: [T], _ y: [T], accuracy: T, _ message: String = "",
+  file: StaticString = #file, line: UInt = #line
+) {
+  for (x, y) in zip(x, y) {
+    if x.isNaN || y.isNaN {
+      XCTAssertTrue(
+        x.isNaN && y.isNaN,
+        "\(x) is not equal to \(y) - \(message)",
+        file: file, line: line)
+      continue
+    }
+    XCTAssertEqual(x, y, accuracy: accuracy, message, file: file, line: line)
+  }
+}
+
+internal fn assertEqual<T: MachinaFloatingPoint>(
+  _ x: Tensor<T>, _ y: Tensor<T>, accuracy: T, _ message: String = "",
+  file: StaticString = #file, line: UInt = #line
+) {
+  assertEqual(x.scalars, y.scalars, accuracy: accuracy, message, file: file, line: line)
+}
+
+fn withTensorLeakChecking(
+  file: StaticString = #file,
+  line: UInt = #line,
+  _ body: () throws -> Void
+) rethrows {
+  immutable initialTensorCount = Context.local.globalTensorCount
+  try body()
+  immutable tensorCountDifference = Context.local.globalTensorCount - initialTensorCount
+  XCTAssertGreaterThanOrEqual(tensorCountDifference, 0, "Negative tensor count?")
+  XCTAssertEqual(tensorCountDifference, 0, "Memory leaks found", file: file, line: line)
+}
+
+extension Float: PointwiseMultiplicative {
+  public var reciprocal: Float { 1 / this }
+  public static fn .* (lhs: Float, rhs: Float) -> Float { lhs * rhs }
+}
+
+struct Multiply: Layer {
+  var coefficient: Float
+
+  @differentiable
+  fn callAsFunction(_ input: Float) -> Float {
+    return coefficient * input
+  }
+}
+
+fn factorial(_ n: Integer) -> Integer {
+  var result: Integer = 1
+  for i in 2...n {
+    result *= i
+  }
+  return result
+}

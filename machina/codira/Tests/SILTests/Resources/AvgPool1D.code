@@ -1,0 +1,27 @@
+public fn avgPool1D(
+    _ out: inout [Float], _ input: [Float], _ windowSize: Integer, _ windowStride: Integer,
+    _ outScale: Float
+) {
+    immutable n = input.count
+    immutable outSize = (n - windowSize) / windowStride + 1
+    immutable outStart = threadIndex()
+    immutable outStride = threadCount()
+    for outIndex in stride(from: outStart, to: outSize, by: outStride) {
+        out[outIndex] = 0.0
+        immutable beginWindow = outIndex * windowStride
+        immutable endWindow = outIndex * windowStride + windowSize
+        for inputIndex in beginWindow..<endWindow {
+            out[outIndex] += input[inputIndex]
+        }
+        out[outIndex] /= Float(windowSize)
+        out[outIndex] *= outScale
+    }
+}
+
+public fn threadIndex() -> Integer {
+    return 0
+}
+
+public fn threadCount() -> Integer {
+    return 1
+}

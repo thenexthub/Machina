@@ -1,0 +1,14 @@
+{
+  "sourceFilters" : [
+    "machina/lite/delegates/gpu/...",
+  ],
+  "buildTargets" : [
+    "//machina/lite/delegates/gpu/metal:ComponentsTests",
+  ],
+  "projectName" : "ComponentsTests",
+  "additionalFilePaths" : [
+    "machina/lite/delegates/gpu/BUILD",
+    "machina/lite/delegates/gpu/metal/BUILD",
+    "machina/lite/delegates/gpu/metal/kernels/BUILD",
+  ]
+}

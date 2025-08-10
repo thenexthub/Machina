@@ -1,0 +1,4 @@
+module CMachina {
+  header "CMachina.h"
+  link "x10"
+}

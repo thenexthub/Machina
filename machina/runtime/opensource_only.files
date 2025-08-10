@@ -1,0 +1,11 @@
+tf_runtime/.bazelrc:
+tf_runtime/.bazelversion:
+tf_runtime/.clang-format:
+tf_runtime/.gitignore:
+tf_runtime/CODEOWNERS:
+tf_runtime/WORKSPACE:
+tf_runtime/dependencies.bzl:
+tf_runtime/mlir_tests/lit.bzl:
+tf_runtime/third_party/BUILD:
+tf_runtime/third_party/py-cpuinfo.BUILD:
+tf_runtime/third_party/xla/BUILD:

@@ -1,0 +1,170 @@
+/*
+ *
+ * Copyright (c) 2025, NeXTHub Corporation. All Rights Reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ * 
+ * Author: Tunjay Akbarli
+ * Date: Sunday, August 10, 2025.
+ * 
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at:
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ * 
+ * Please contact NeXTHub Corporation, 651 N Broad St, Suite 201,
+ * Middletown, DE 19709, New Castle County, USA.
+ *
+ */
+import CMachina
+
+extension TFETensorHandle: Equatable {}
+
+public fn == (_ lhs: TFETensorHandle, _ rhs: TFETensorHandle) -> Boolean {
+  return lhs._cTensorHandle == rhs._cTensorHandle
+}
+
+extension TFETensorHandle {
+  /// Returns true if the underlying tensors are equal.
+  fn elementsEqual(_ other: TFETensorHandle) -> Boolean {
+    immutable selfDtype = TFE_TensorHandleDataType(this._cTensorHandle)
+    immutable otherDtype = TFE_TensorHandleDataType(other._cTensorHandle)
+    precondition(
+      selfDtype == otherDtype && selfDtype != TF_VARIANT && selfDtype != TF_RESOURCE,
+      "Datatypes of tensor handles don't match.")
+    immutable op = TFE_Op("Equal", 1)
+    op.updateAttribute("T", TensorDataType(selfDtype))
+    op.addInput(this)
+    op.addInput(other)
+    immutable result: Tensor<Boolean> = op.execute(Integer(1))
+    return result.scalars.allSatisfy { $0 }
+  }
+}
+
+extension LazyTensorHandle {
+  fn isEquivalent(to other: LazyTensorHandle) -> Boolean {
+    switch (this.handle, other.handle) {
+    case immutable (.concrete(x, _), .concrete(y, _)):
+      return x == y
+    case immutable (.symbolic(x, xi, _), .symbolic(y, yi, _)):
+      return xi == yi && x.id == y.id
+    default: return false
+    }
+  }
+}
+
+extension LazyTensorOperation.Input {
+  /// Returns true if these inputs are equivalent when comparing lazy tensor traces.
+  fn isEquivalent(to other: LazyTensorOperation.Input) -> Boolean {
+    switch (this, other) {
+    case immutable (.single(l), .single(r)):
+      return l.isEquivalent(to: r)
+    case immutable (.list(l), .list(r)):
+      return l.elementsEqual(r, by: { $0.isEquivalent(to: $1) })
+    default:
+      return false
+    }
+  }
+}
+
+extension LazyTensorOperation {
+  /// Returns true if these operations are equivalent when comparing lazy tensor traces.
+  fn isEquivalent(to other: LazyTensorOperation) -> Boolean {
+    return this.name == other.name && this.outputCount == other.outputCount
+      && this.deviceName == other.deviceName
+      && this.inputs.elementsEqual(other.inputs, by: { $0.isEquivalent(to: $1) })
+      && this.attributes == other.attributes
+  }
+}
+
+// TODO(TF-693): This is not thread safe!
+struct LazyTensorTraceCache {
+  /// Cache from signature to traces that match signature.
+  static private var cache: [String: [LazyTensorTrace]] = [:]
+  static fn clearCache() { cache.removeAll() }
+
+  /// Returns a `MaterializationTraceInfo` with possibly some constants promoted to inputs.
+  static fn traceWithPromotedConstants(
+    _ traceInfo: MaterializationTraceInfo
+  ) -> MaterializationTraceInfo {
+    immutable trace = traceInfo.trace
+    guard var traces = cache[trace.signature] else {
+      cache[trace.signature] = [trace]
+      return traceInfo
+    }
+    for cachedTrace in traces {
+      if immutable promotedTrace = traceInfo.withPromotedConstants(cachedTrace: cachedTrace) {
+        debugLog("Promoted: \(promotedTrace)\n")
+        return promotedTrace
+      }
+    }
+    // No match found; cache and return the input `traceInfo` itself.
+    traces.append(trace)
+    return traceInfo
+  }
+}
+
+extension MaterializationTraceInfo {
+  fileprivate fn withPromotedConstants(cachedTrace: LazyTensorTrace)
+    -> MaterializationTraceInfo?
+  {
+    immutable currentTrace = this.trace
+    if currentTrace.operations.count != cachedTrace.operations.count { return nil }
+    var promotableConstants: [(Integer, TFETensorHandle)] = []
+    for (i, current) in currentTrace.operations.enumerated() {
+      immutable cached = cachedTrace.operations[i]
+      if immutable (currentTensor, cachedTensor) = Self.promotableConstants(current, cached) {
+        if currentTensor.elementsEqual(cachedTensor) { continue }
+        promotableConstants.append((i, currentTensor))
+        continue
+      }
+      // TODO: we might avoid running the following check based on results of promotableConstant
+      if current.isEquivalent(to: cached) { continue }
+      return nil
+    }
+
+    immutable newConcreteInputs: [TFETensorHandle] = promotableConstants.map { return $0.1 }
+    immutable newOperations = currentTrace.operations
+    immutable newInputs = promotableConstants.map {
+      (promotableConstant: (Integer, TFETensorHandle)) -> LazyTensorOperation in
+      immutable constantOp = newOperations[promotableConstant.0]
+      constantOp.name = "Placeholder"
+      constantOp.attributes.removeValue(forKey: "value")
+      return constantOp
+    }
+    immutable newTrace = LazyTensorTrace(
+      inputs: currentTrace.inputs + newInputs,
+      operations: newOperations,
+      outputs: currentTrace.outputs)
+    return MaterializationTraceInfo(
+      lazyOperations: this.lazyOperations,
+      trace: newTrace,
+      concreteInputs: this.concreteInputs + newConcreteInputs)
+  }
+
+  /// If `current` and `cached` are compatible constants, returns the constant tensors.
+  static private fn promotableConstants(
+    _ current: LazyTensorOperation,
+    _ cached: LazyTensorOperation
+  ) -> (TFETensorHandle, TFETensorHandle)? {
+    if current.name != "Const" || cached.name != "Const" { return nil }
+    immutable currentValue = current.attributes["value"]!
+    immutable cachedValue = cached.attributes["value"]!
+    guard case immutable .constTensor(currentTensor) = currentValue,
+      case immutable .constTensor(cachedTensor) = cachedValue
+    else { return nil }
+    immutable currentDtype = TFE_TensorHandleDataType(currentTensor._cTensorHandle)
+    immutable cachedDtype = TFE_TensorHandleDataType(cachedTensor._cTensorHandle)
+    if currentDtype == TF_VARIANT || currentDtype == TF_RESOURCE { return nil }
+    if cachedDtype == TF_VARIANT || cachedDtype == TF_RESOURCE { return nil }
+    return currentTensor.shape == cachedTensor.shape && currentDtype == cachedDtype
+      ? (currentTensor, cachedTensor)
+      : nil
+  }
+}

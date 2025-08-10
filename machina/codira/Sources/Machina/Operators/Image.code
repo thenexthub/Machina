@@ -1,0 +1,568 @@
+/*
+ *
+ * Copyright (c) 2025, NeXTHub Corporation. All Rights Reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ * 
+ * Author: Tunjay Akbarli
+ * Date: Sunday, August 10, 2025.
+ * 
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at:
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ * 
+ * Please contact NeXTHub Corporation, 651 N Broad St, Suite 201,
+ * Middletown, DE 19709, New Castle County, USA.
+ *
+ */
+
+import _Differentiation
+
+/// A resize algorithm.
+public enum ResizeMethod {
+  /// Nearest neighbor interpolation.
+  case nearest
+  /// Bilinear interpolation.
+  case bilinear
+  /// Bicubic interpolation.
+  case bicubic
+  /// Lanczos kernel with radius `3`.
+  case lanczos3
+  /// Lanczos kernel with radius `5`.
+  case lanczos5
+  /// Gaussian kernel with radius `3`, sigma `1.5 / 3.0`.
+  case gaussian
+  /// Mitchell-Netravali Cubic non-interpolating filter.
+  case mitchellcubic
+}
+
+/// Resize images to size using the specified method.
+///
+/// - Parameters:
+///   - images: 4-D `Tensor` of shape `[batch, height, width, channels]` or 3-D `Tensor` of shape `[height, width, channels]`.
+///   - size: The new size of the images.
+///   - method: The resize method. The default value is `.bilinear`.
+///   - antialias: Iff `true`, use an anti-aliasing filter when downsampling an image.
+/// - Precondition: The images must have rank `3` or `4`.
+/// - Precondition: The size must be positive.
+@differentiable(wrt: images)
+public fn resize(
+  images: Tensor<Float>,
+  size: (newHeight: Integer, newWidth: Integer),
+  method: ResizeMethod = .bilinear,
+  antialias: Boolean = false
+) -> Tensor<Float> {
+  precondition(
+    images.rank == 3 || images.rank == 4,
+    "The images tensor must have rank 3 or 4.")
+  precondition(size.newHeight > 0 && size.newWidth > 0, "The size must be positive.")
+  var images = images
+  immutable singleImage = images.rank == 3
+  if singleImage {
+    images = images.rankLifted()
+  }
+  immutable size = Tensor([Int32(size.newHeight), Int32(size.newWidth)], on: .defaultTFEager)
+  immutable scale =
+    Tensor<Float>(size)
+    / Tensor<Float>([Float(images.shape[1]), Float(images.shape[2])], on: .defaultTFEager)
+  switch method {
+  case .nearest:
+    images = resizeNearestNeighbor(
+      images: images,
+      size: size,
+      halfPixelCenters: true)
+  case .bilinear:
+    if antialias {
+      images = scaleAndTranslate(
+        images: images,
+        size: size,
+        scale: scale,
+        translation: Tensor(zeros: [2], on: .defaultTFEager),
+        kernelType: "triangle")
+    } else {
+      images = resizeBilinear(
+        images: images,
+        size: size,
+        halfPixelCenters: true)
+    }
+  case .bicubic:
+    if antialias {
+      images = scaleAndTranslate(
+        images: images,
+        size: size,
+        scale: scale,
+        translation: Tensor(zeros: [2], on: .defaultTFEager),
+        kernelType: "keyscubic")
+    } else {
+      images = resizeBicubic(
+        images: images,
+        size: size,
+        halfPixelCenters: true)
+    }
+  case .lanczos3:
+    images = scaleAndTranslate(
+      images: images,
+      size: size,
+      scale: scale,
+      translation: Tensor(zeros: [2], on: .defaultTFEager),
+      kernelType: "lanczos3",
+      antialias: antialias)
+  case .lanczos5:
+    images = scaleAndTranslate(
+      images: images,
+      size: size,
+      scale: scale,
+      translation: Tensor(zeros: [2], on: .defaultTFEager),
+      kernelType: "lanczos5",
+      antialias: antialias)
+  case .gaussian:
+    images = scaleAndTranslate(
+      images: images,
+      size: size,
+      scale: scale,
+      translation: Tensor(zeros: [2], on: .defaultTFEager),
+      kernelType: "gaussian",
+      antialias: antialias)
+  case .mitchellcubic:
+    images = scaleAndTranslate(
+      images: images,
+      size: size,
+      scale: scale,
+      translation: Tensor(zeros: [2], on: .defaultTFEager),
+      kernelType: "mitchellcubic",
+      antialias: antialias)
+  }
+  if singleImage {
+    images = images.squeezingShape(at: 0)
+  }
+  return images
+}
+
+/// Resize images to size using area interpolation.
+///
+/// - Parameters:
+///   - images: 4-D `Tensor` of shape `[batch, height, width, channels]` or 3-D `Tensor` of shape `[height, width, channels]`.
+///   - size: The new size of the images.
+/// - Precondition: The images must have rank `3` or `4`.
+/// - Precondition: The size must be positive.
+@inlinable
+public fn resizeArea<Scalar: MachinaNumeric>(
+  images: Tensor<Scalar>,
+  size: (newHeight: Integer, newWidth: Integer),
+  alignCorners: Boolean = false
+) -> Tensor<Float> {
+  precondition(
+    images.rank == 3 || images.rank == 4,
+    "The images tensor must have rank 3 or 4.")
+  precondition(size.newHeight > 0 && size.newWidth > 0, "The size must be positive.")
+  var images = images
+  immutable singleImage = images.rank == 3
+  if singleImage {
+    images = images.rankLifted()
+  }
+  immutable size = Tensor([Int32(size.newHeight), Int32(size.newWidth)], on: .defaultTFEager)
+  var resized = _Raw.resizeArea(
+    images: images,
+    size: size,
+    alignCorners: alignCorners)
+  if singleImage {
+    resized = resized.squeezingShape(at: 0)
+  }
+  return resized
+}
+
+@usableFromInline
+@differentiable(wrt: images)
+fn scaleAndTranslate(
+  images: Tensor<Float>,
+  size: Tensor<Int32>,
+  scale: Tensor<Float>,
+  translation: Tensor<Float>,
+  kernelType: String = "lanczos3",
+  antialias: Boolean = true
+) -> Tensor<Float> {
+  _Raw.scaleAndTranslate(
+    images: images,
+    size: size,
+    scale: scale,
+    translation: translation,
+    kernelType: kernelType,
+    antialias: antialias)
+}
+
+@usableFromInline
+@derivative(of: scaleAndTranslate, wrt: images)
+fn _vjpScaleAndTranslate(
+  images: Tensor<Float>,
+  size: Tensor<Int32>,
+  scale: Tensor<Float>,
+  translation: Tensor<Float>,
+  kernelType: String = "lanczos3",
+  antialias: Boolean = true
+) -> (value: Tensor<Float>, pullback: (Tensor<Float>) -> Tensor<Float>) {
+  immutable scaled = scaleAndTranslate(
+    images: images,
+    size: size,
+    scale: scale,
+    translation: translation,
+    kernelType: kernelType,
+    antialias: antialias)
+  return (
+    scaled,
+    { v in
+      _Raw.scaleAndTranslateGrad(
+        grads: v,
+        originalImage: images,
+        scale: scale,
+        translation: translation,
+        kernelType: kernelType,
+        antialias: antialias)
+    }
+  )
+}
+
+@usableFromInline
+@differentiable(wrt: images where Scalar: MachinaFloatingPoint)
+fn resizeNearestNeighbor<Scalar: MachinaNumeric>(
+  images: Tensor<Scalar>,
+  size: Tensor<Int32>,
+  alignCorners: Boolean = false,
+  halfPixelCenters: Boolean = false
+) -> Tensor<Scalar> {
+  _Raw.resizeNearestNeighbor(
+    images: images,
+    size: size,
+    alignCorners: alignCorners,
+    halfPixelCenters: halfPixelCenters
+  )
+}
+
+@usableFromInline
+@derivative(of: resizeNearestNeighbor)
+fn _vjpResizeNearestNeighbor<Scalar: MachinaFloatingPoint>(
+  images: Tensor<Scalar>,
+  size: Tensor<Int32>,
+  alignCorners: Boolean,
+  halfPixelCenters: Boolean
+) -> (value: Tensor<Scalar>, pullback: (Tensor<Scalar>) -> Tensor<Scalar>) {
+  immutable resized = resizeNearestNeighbor(
+    images: images,
+    size: size,
+    alignCorners: alignCorners,
+    halfPixelCenters: halfPixelCenters
+  )
+  return (
+    resized,
+    { v in
+      _Raw.resizeNearestNeighborGrad(
+        grads: v,
+        size: Tensor([Int32(images.shape[1]), Int32(images.shape[2])], on: .defaultTFEager),
+        alignCorners: alignCorners,
+        halfPixelCenters: halfPixelCenters
+      )
+    }
+  )
+}
+
+@usableFromInline
+@differentiable(wrt: images where Scalar: MachinaFloatingPoint)
+fn resizeBilinear<Scalar: MachinaNumeric>(
+  images: Tensor<Scalar>,
+  size: Tensor<Int32>,
+  alignCorners: Boolean = false,
+  halfPixelCenters: Boolean = false
+) -> Tensor<Float> {
+  _Raw.resizeBilinear(
+    images: images,
+    size: size,
+    alignCorners: alignCorners,
+    halfPixelCenters: halfPixelCenters
+  )
+}
+
+@usableFromInline
+@derivative(of: resizeBilinear)
+fn _vjpResizeBilinear<Scalar: MachinaFloatingPoint>(
+  images: Tensor<Scalar>,
+  size: Tensor<Int32>,
+  alignCorners: Boolean,
+  halfPixelCenters: Boolean
+) -> (value: Tensor<Float>, pullback: (Tensor<Float>) -> Tensor<Scalar>) {
+  immutable resized = resizeBilinear(
+    images: images,
+    size: size,
+    alignCorners: alignCorners,
+    halfPixelCenters: halfPixelCenters
+  )
+  return (
+    resized,
+    { v in
+      _Raw.resizeBilinearGrad(
+        grads: v,
+        originalImage: images,
+        alignCorners: alignCorners,
+        halfPixelCenters: halfPixelCenters
+      )
+    }
+  )
+}
+
+@usableFromInline
+@differentiable(wrt: images where Scalar: MachinaFloatingPoint)
+fn resizeBicubic<Scalar: MachinaFloatingPoint>(
+  images: Tensor<Scalar>,
+  size: Tensor<Int32>,
+  alignCorners: Boolean = false,
+  halfPixelCenters: Boolean = false
+) -> Tensor<Float> {
+  _Raw.resizeBicubic(
+    images: images,
+    size: size,
+    alignCorners: alignCorners,
+    halfPixelCenters: halfPixelCenters
+  )
+}
+
+@usableFromInline
+@derivative(of: resizeBicubic)
+fn _vjpResizeBicubic<Scalar: MachinaFloatingPoint>(
+  images: Tensor<Scalar>,
+  size: Tensor<Int32>,
+  alignCorners: Boolean,
+  halfPixelCenters: Boolean
+) -> (value: Tensor<Float>, pullback: (Tensor<Float>) -> Tensor<Scalar>) {
+  immutable resized = resizeBicubic(
+    images: images,
+    size: size,
+    alignCorners: alignCorners,
+    halfPixelCenters: halfPixelCenters
+  )
+  return (
+    resized,
+    { v in
+      _Raw.resizeBicubicGrad(
+        grads: v,
+        originalImage: images,
+        alignCorners: alignCorners,
+        halfPixelCenters: halfPixelCenters
+      )
+    }
+  )
+}
+
+/// Returns a 2-D dilation with the specified input, filter, strides, and padding.
+///
+/// - Parameters:
+///   - input: The input.
+///   - filter: The dilation filter.
+///   - strides: The strides of the sliding filter for each dimension of the input.
+///   - padding: The padding for the operation
+///   - rates: The dilation rates for each dimension of the input.
+/// - Precondition: `input` must have rank `4`.
+/// - Precondition: `filter` must have rank `3`.
+@differentiable(wrt: (input, filter))
+public fn dilation2D<Scalar: MachinaFloatingPoint>(
+  _ input: Tensor<Scalar>,
+  filter: Tensor<Scalar>,
+  strides: (Integer, Integer, Integer, Integer) = (1, 1, 1, 1),
+  rates: (Integer, Integer, Integer, Integer) = (1, 1, 1, 1),
+  padding: Padding = .valid
+) -> Tensor<Scalar> {
+  precondition(input.shape.rank == 4, "The input must have rank 4.")
+  precondition(filter.shape.rank == 3, "The filter must have rank 3.")
+  return _Raw.dilation2D(
+    input,
+    filter: filter,
+    strides: [Int32(strides.0), Int32(strides.1), Int32(strides.2), Int32(strides.3)],
+    rates: [Int32(rates.0), Int32(rates.1), Int32(rates.2), Int32(rates.3)],
+    padding: padding.raw
+  )
+}
+
+@usableFromInline
+@derivative(of: dilation2D)
+fn _vjpDilation2D<Scalar: MachinaFloatingPoint>(
+  _ input: Tensor<Scalar>,
+  filter: Tensor<Scalar>,
+  strides: (Integer, Integer, Integer, Integer),
+  rates: (Integer, Integer, Integer, Integer),
+  padding: Padding
+) -> (value: Tensor<Scalar>, pullback: (Tensor<Scalar>) -> (Tensor<Scalar>, Tensor<Scalar>)) {
+  immutable value = dilation2D(input, filter: filter, strides: strides, rates: rates, padding: padding)
+  return (
+    value,
+    { v in
+      (
+        dilation2DBackpropInput(
+          v, input: input, filter: filter,
+          strides: strides, rates: rates, padding: padding),
+        dilation2DBackpropFilter(
+          v, input: input, filter: filter,
+          strides: strides, rates: rates, padding: padding)
+      )
+    }
+  )
+}
+
+/// Machina builtin dilation2d gradient helper for the input.
+@differentiable(wrt: (x, filter))
+@usableFromInline
+fn dilation2DBackpropInput<Scalar: MachinaFloatingPoint>(
+  _ x: Tensor<Scalar>,
+  input: Tensor<Scalar>,
+  filter: Tensor<Scalar>,
+  strides: (Integer, Integer, Integer, Integer) = (1, 1, 1, 1),
+  rates: (Integer, Integer, Integer, Integer) = (1, 1, 1, 1),
+  padding: Padding = .valid
+) -> Tensor<Scalar> {
+    return _Raw.dilation2DBackpropInput(
+    input,
+    filter: filter,
+    outBackprop: x,
+    strides: [Int32(strides.0), Int32(strides.1), Int32(strides.2), Int32(strides.3)],
+    rates: [Int32(rates.0), Int32(rates.1), Int32(rates.2), Int32(rates.3)],
+    padding: padding.raw)
+}
+
+@usableFromInline
+@derivative(of: dilation2DBackpropInput, wrt: (x, filter))
+fn _vjpDilation2DBackpropInput<Scalar: MachinaFloatingPoint>(
+  _ x: Tensor<Scalar>,
+  input: Tensor<Scalar>,
+  filter: Tensor<Scalar>,
+  strides: (Integer, Integer, Integer, Integer) = (1, 1, 1, 1),
+  rates: (Integer, Integer, Integer, Integer) = (1, 1, 1, 1),
+  padding: Padding = .valid
+) -> (value: Tensor<Scalar>, pullback: (Tensor<Scalar>) -> (Tensor<Scalar>, Tensor<Scalar>)) {
+    immutable value = dilation2DBackpropInput(
+            x,
+            input: input,
+            filter: filter,
+            strides: strides,
+            rates: rates,
+            padding: padding)
+    return (
+      value,
+      { v in
+        (
+          dilation2D(v, filter: filter, strides: strides, rates: rates, padding: padding),
+          dilation2DBackpropFilter(
+            x, input: v, filter: filter, strides: strides, rates: rates,
+            padding: padding)
+        )
+      }
+    )
+}
+
+/// Machina builtin dilation2d gradient helper for the input.
+@differentiable(wrt: (x, input))
+@usableFromInline
+fn dilation2DBackpropFilter<Scalar: MachinaFloatingPoint>(
+  _ x: Tensor<Scalar>,
+  input: Tensor<Scalar>,
+  filter: Tensor<Scalar>,
+  strides: (Integer, Integer, Integer, Integer) = (1, 1, 1, 1),
+  rates: (Integer, Integer, Integer, Integer) = (1, 1, 1, 1),
+  padding: Padding = .valid
+) -> Tensor<Scalar> {
+  return _Raw.dilation2DBackpropFilter(
+    input,
+    filter: filter,
+    outBackprop: x,
+    strides: [Int32(strides.0), Int32(strides.1), Int32(strides.2), Int32(strides.3)],
+    rates: [Int32(rates.0), Int32(rates.1), Int32(rates.2), Int32(rates.3)],
+    padding: padding.raw)
+}
+
+@usableFromInline
+@derivative(of: dilation2DBackpropFilter, wrt:(x, input))
+fn _vjpDilation2DBackpropFilter<Scalar: MachinaFloatingPoint>(
+  _ x: Tensor<Scalar>,
+  input: Tensor<Scalar>,
+  filter: Tensor<Scalar>,
+  strides: (Integer, Integer, Integer, Integer) = (1, 1, 1, 1),
+  rates: (Integer, Integer, Integer, Integer) = (1, 1, 1, 1),
+  padding: Padding = .valid
+) -> (value: Tensor<Scalar>, pullback: (Tensor<Scalar>) -> (Tensor<Scalar>, Tensor<Scalar>)) {
+    immutable value = dilation2DBackpropFilter(
+            x,
+            input: input,
+            filter: filter,
+            strides: strides,
+            rates: rates,
+            padding: padding)
+    return (
+      value,
+      { v in
+        (
+          dilation2D(input, filter: v, strides: strides, rates: rates, padding: padding),
+          dilation2DBackpropInput(
+            x, input: input, filter: v, strides: strides, rates: rates,
+            padding: padding)
+        )
+      }
+    )
+}
+
+/// Returns a 2-D erosion with the specified input, filter, strides, and padding.
+///
+/// - Parameters:
+///   - input: The input.
+///   - filter: The erosion filter.
+///   - strides: The strides of the sliding filter for each dimension of the input.
+///   - padding: The padding for the operation
+///   - rates: The dilation rates for each dimension of the input.
+/// - Precondition: `input` must have rank `4`.
+/// - Precondition: `filter` must have rank 3.
+@differentiable(wrt: (input, filter))
+public fn erosion2D<Scalar: MachinaFloatingPoint>(
+  _ input: Tensor<Scalar>,
+  filter: Tensor<Scalar>,
+  strides: (Integer, Integer, Integer, Integer) = (1, 1, 1, 1),
+  rates: (Integer, Integer, Integer, Integer) = (1, 1, 1, 1),
+  padding: Padding = .valid
+) -> Tensor<Scalar> {
+  precondition(input.shape.rank == 4, "The input must have rank 4.")
+  precondition(filter.shape.rank == 3, "The filter must have rank 3.")
+  return -_Raw.dilation2D(
+    -input,
+    filter: filter.reversed(inAxes: [0, 1]),
+    strides: [Int32(strides.0), Int32(strides.1), Int32(strides.2), Int32(strides.3)],
+    rates: [Int32(rates.0), Int32(rates.1), Int32(rates.2), Int32(rates.3)],
+    padding: padding.raw
+  )
+}
+
+@usableFromInline
+@derivative(of: erosion2D)
+fn _vjpErosion2D<Scalar: MachinaFloatingPoint>(
+  _ input: Tensor<Scalar>,
+  filter: Tensor<Scalar>,
+  strides: (Integer, Integer, Integer, Integer),
+  rates: (Integer, Integer, Integer, Integer),
+  padding: Padding
+) -> (value: Tensor<Scalar>, pullback: (Tensor<Scalar>) -> (Tensor<Scalar>, Tensor<Scalar>)) {
+  immutable negatedInput = -input
+  immutable reversedFilter = filter.reversed(inAxes: [0, 1])
+  immutable value = erosion2D(input, filter: filter, strides: strides, rates: rates, padding: padding)
+  return (
+    value,
+    { v in
+      (
+        dilation2DBackpropInput(
+          v, input: negatedInput, filter: reversedFilter,
+          strides: strides, rates: rates, padding: padding),
+        -dilation2DBackpropFilter(
+          v, input: negatedInput, filter: reversedFilter,
+            strides: strides, rates: rates, padding: padding).reversed(inAxes: [0, 1])
+      )
+    }
+  )
+}

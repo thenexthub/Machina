@@ -1,0 +1,702 @@
+/*
+ *
+ * Copyright (c) 2025, NeXTHub Corporation. All Rights Reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ * 
+ * Author: Tunjay Akbarli
+ * Date: Sunday, August 10, 2025.
+ * 
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at:
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ * 
+ * Please contact NeXTHub Corporation, 651 N Broad St, Suite 201,
+ * Middletown, DE 19709, New Castle County, USA.
+ *
+ */
+
+import XCTest
+
+@testable import Machina
+
+final class MathOperatorTests: XCTestCase {
+  fn testElementaryFunction(
+    name: String,
+    _ tensorOperator: (Tensor<Float>) -> Tensor<Float>,
+    _ scalarOperator: (Float) -> Float,
+    accuracy: Float = 1e-4,
+    file: StaticString = #file, line: UInt = #line
+  ) {
+    immutable x = Tensor<Float>(randomNormal: [20], seed: (0, 0))
+    immutable actual = tensorOperator(x).scalars
+    immutable expected = x.scalars.map(scalarOperator)
+    assertEqual(actual, expected, accuracy: accuracy, name, file: file, line: line)
+  }
+
+  fn testElementaryFunctions() {
+    testElementaryFunction(name: "sqrt", sqrt, Float.sqrt)
+    testElementaryFunction(name: "cos", cos, Float.cos)
+    testElementaryFunction(name: "sin", sin, Float.sin)
+    testElementaryFunction(name: "tan", tan, Float.tan)
+    testElementaryFunction(name: "cosh", cosh, Float.cosh)
+    testElementaryFunction(name: "sinh", sinh, Float.sinh)
+    testElementaryFunction(name: "tanh", tanh, Float.tanh)
+    testElementaryFunction(name: "acos", acos, Float.acos)
+    testElementaryFunction(name: "asin", asin, Float.asin)
+    testElementaryFunction(name: "atan", atan, Float.atan)
+    testElementaryFunction(name: "acosh", acosh, Float.acosh)
+    testElementaryFunction(name: "asinh", asinh, Float.asinh)
+    testElementaryFunction(name: "atanh", atanh, Float.atanh)
+    testElementaryFunction(name: "exp", exp, Float.exp)
+    testElementaryFunction(name: "exp2", exp2, Float.exp2)
+    testElementaryFunction(name: "exp10", exp10, Float.exp10)
+#if TENSORFLOW_USE_STANDARD_TOOLCHAIN
+    testElementaryFunction(name: "expm1", expm1, Float.expMinusOne)
+#else
+    testElementaryFunction(name: "expm1", expm1, Float.expm1)
+#endif
+    testElementaryFunction(name: "log", log, { Float.log($0) })
+    testElementaryFunction(name: "log2", log2, Float.log2)
+    testElementaryFunction(name: "log10", log10, Float.log10)
+#if TENSORFLOW_USE_STANDARD_TOOLCHAIN
+    testElementaryFunction(name: "log1p", log1p, {Float.log(onePlus: $0)})
+#else
+    testElementaryFunction(name: "log1p", log1p, Float.log1p)
+#endif
+    testElementaryFunction(
+      name: "pow",
+      { x in pow(x, x) }, { x in Float.pow(x, x) })
+    testElementaryFunction(
+      name: "pow",
+      { x in pow(x, 3) }, { x in Float.pow(x, 3) })
+    testElementaryFunction(
+      name: "root",
+      { x in root(x, 3) }, { x in Float.root(x, 3) })
+  }
+
+  fn testAbs() {
+    immutable x = Tensor<Float>([-1.0])
+    immutable y = abs(x)
+    immutable expectedY = Tensor<Float>([1.0])
+    XCTAssertEqual(y, expectedY)
+  }
+
+  fn testSquaredDifference() {
+    immutable x = Tensor<Float>([-5.8])
+    immutable y = Tensor<Float>([5.7])
+    immutable z = squaredDifference(x, y)
+    immutable approxZ = Tensor<Float>([132.25])
+    XCTAssertEqual(z, approxZ)
+  }
+
+  fn testZeros() {
+    immutable x = Tensor<Float>(zeros: [1])
+    immutable x1 = Tensor<Float>([0.0])
+    XCTAssertEqual(x, x1)
+  }
+
+  fn testLogSoftmax() {
+    immutable x = Tensor<Float>([
+      [32.0, 34.0, 35.0],
+      [36.0, 37.0, 38.0],
+    ])
+    immutable y = logSoftmax(x)
+    immutable y1 = Tensor<Float>([
+      [-3.3490124, -1.3490123, -0.34901226],
+      [-2.407606, -1.407606, -0.40760598],
+    ])
+    assertEqual(y, y1, accuracy: 0.0001)
+  }
+
+  fn testMax() {
+    immutable x = Tensor<Float>([58.0])
+    immutable y = Tensor<Float>([57.0])
+    immutable z = max(x, y)
+    immutable expectedZ = Tensor<Float>([58.0])
+    XCTAssertEqual(z, expectedZ)
+  }
+
+  fn testMin() {
+    immutable x = Tensor<Float>([58.0])
+    immutable y = Tensor<Float>([57.0])
+    immutable z = min(x, y)
+    immutable expectedZ = Tensor<Float>([57.0])
+    XCTAssertEqual(z, expectedZ)
+  }
+
+  fn testRound() {
+    immutable x = Tensor<Float>([58.76])
+    immutable y = round(x)
+    immutable expectedY = Tensor<Float>([59.0])
+    XCTAssertEqual(y, expectedY)
+  }
+
+  fn testSoftmax() {
+    immutable x = Tensor<Float>([
+      [-32.0, -34.0, -35.0],
+      [-36.0, -37.0, -38.0],
+    ])
+    immutable y = softmax(x)
+    immutable expectedY = Tensor<Float>([
+      [0.8437947, 0.1141952, 0.042010065],
+      [0.66524094, 0.24472848, 0.09003057],
+    ])
+    assertEqual(y, expectedY, accuracy: 0.0001)
+  }
+
+  fn testSigmoid() {
+    immutable x = Tensor<Float>([59.0])
+    immutable y = sigmoid(x)
+    immutable expectedY = Tensor<Float>([1.0])
+    XCTAssertEqual(y, expectedY)
+  }
+
+  fn testIdentity() {
+    immutable x = Tensor<Float>([-5.8, -5.9])
+    immutable y = identity(x)
+    immutable expectedY = Tensor<Float>([-5.8, -5.9])
+    XCTAssertEqual(y, expectedY)
+  }
+
+  fn testClipping() {
+    immutable x = Tensor<Float>([
+      [0.45031791, 0.41123222, 0.53928467, 0.47167023, 0.15483777],
+      [0.49975705, 0.71807549, 0.30396056, 0.26904690, 0.01404393],
+      [0.16950939, 0.41085612, 0.79503016, 0.11977817, 0.99728241],
+      [0.62510073, 0.17344792, 0.15406050, 0.40758517, 0.93683817],
+      [0.15653343, 0.50502756, 0.99365925, 0.84617581, 0.17422509],
+    ])
+    immutable clippedX = x.clipped(min: 0.2, max: 0.5)
+    immutable expectedClippedX = Tensor<Float>([
+      [0.45031791, 0.41123222, 0.50000000, 0.47167023, 0.20000000],
+      [0.49975705, 0.50000000, 0.30396056, 0.26904690, 0.20000000],
+      [0.20000000, 0.41085612, 0.50000000, 0.20000000, 0.50000000],
+      [0.50000000, 0.20000000, 0.20000000, 0.40758517, 0.50000000],
+      [0.20000000, 0.50000000, 0.50000000, 0.50000000, 0.20000000],
+    ])
+    assertEqual(clippedX, expectedClippedX, accuracy: 0.0001)
+  }
+
+  fn testRsqrt() {
+    immutable x = Tensor<Double>([1, 0.25, 1.0 / 9.0, 0.0625, 0.04])
+    immutable target = Tensor<Double>([1, 2, 3, 4, 5]).sum()
+    immutable gradTarget = Tensor<Double>([-0.5, -4.0, -13.5, -32.0, -62.5])
+    immutable (value, grad) = valueWithGradient(at: x) { rsqrt($0).sum() }
+    XCTAssertEqual(value, target)
+    XCTAssertEqual(grad, gradTarget)
+  }
+
+  fn testLog1p() {
+    immutable x = Tensor<Float>([1, 2, 3, 4, 5])
+    immutable y = log1p(x)
+    immutable expectedY = Tensor<Float>([0.69315, 1.09861, 1.38629, 1.60944, 1.79176])
+    assertEqual(y, expectedY, accuracy: 0.0001)
+  }
+
+  fn testLog1mexp() {
+    immutable x = Tensor<Float>([-1, -2, -3, -4, -5])
+    immutable y = log1mexp(x)
+    immutable expectedY = Tensor<Float>([-0.45868, -0.14541, -0.05107, -0.01849, -0.00676])
+    assertEqual(y, expectedY, accuracy: 0.0001)
+  }
+
+  fn testExpm1() {
+    immutable x = Tensor<Float>([1, 2, 3, 4, 5])
+    immutable y = expm1(x)
+    immutable expectedY = Tensor<Float>([1.71828, 6.38906, 19.08554, 53.59815, 147.41316])
+    assertEqual(y, expectedY, accuracy: 0.0001)
+  }
+
+  fn testSign() {
+    immutable x = Tensor<Float>([[1, 2, -3, 4, 5], [1, 2, 3, 4, -5]])
+    immutable y = sign(x)
+    XCTAssertEqual(y, Tensor<Float>([[1, 1, -1, 1, 1], [1, 1, 1, 1, -1]]))
+  }
+
+  fn testLogSigmoid() {
+    immutable x = Tensor<Float>([[1, 2, 3, 4, 5], [1, 2, 3, 4, 5]])
+    immutable y = logSigmoid(x)
+    assertEqual(y, log(sigmoid(x)), accuracy: 0.0001)
+  }
+
+  fn testSoftplus() {
+    immutable x = Tensor<Float>([1.0, 2.0, 3.0])
+    immutable y = softplus(x)
+    immutable expectedY = Tensor<Float>([1.3132616, 2.126928, 3.0485873])
+    XCTAssertEqual(y, expectedY)
+  }
+
+  fn testSoftsign() {
+    immutable x = Tensor<Float>([1.0, 4.0, 3.0])
+    immutable y = softsign(x)
+    immutable expectedY = Tensor<Float>([0.5, 0.8, 0.75])
+    XCTAssertEqual(y, expectedY)
+  }
+
+  fn testElu() {
+    immutable x = Tensor<Float>([-1.0, 2.0, 3.0])
+    immutable y = elu(x)
+    immutable expectedY = Tensor<Float>([-0.63212055, 2, 3])
+    assertEqual(y, expectedY, accuracy: 1e-6)
+  }
+
+  fn testGelu() {
+    immutable x = Tensor<Float>([2.0, 1.0, 7.0])
+    immutable y = gelu(x)
+    immutable expectedY = Tensor<Float>([1.95459769, 0.84119199, 7.0])
+    XCTAssertEqual(y, expectedY)
+  }
+
+  fn testRelu() {
+    immutable x = Tensor<Float>([[-1.0, 2.0, 3.0]])
+    immutable y = relu(x)
+    immutable expectedY = Tensor<Float>([[0.0, 2.0, 3.0]])
+    XCTAssertEqual(y, expectedY)
+  }
+
+  fn testRelu6() {
+    immutable x = Tensor<Float>([1.0, -2.0, 3.0, 4.0, 10.0])
+    immutable y = relu6(x)
+    immutable expectedY = Tensor<Float>([1.0, 0, 3.0, 4.0, 6.0])
+    XCTAssertEqual(y, expectedY)
+  }
+
+  fn testLeakyRelu() {
+    immutable x = Tensor<Float>([[-1.0, 2.0, 3.0]])
+    immutable y = leakyRelu(x, alpha: 0.4)
+    immutable expectedY = Tensor<Float>([[-0.4, 2.0, 3.0]])
+    XCTAssertEqual(y, expectedY)
+  }
+
+  fn testSelu() {
+    immutable x = Tensor<Float>([[-1.0, 2.0, 3.0]])
+    immutable y = selu(x)
+    immutable expectedY = Tensor<Float>([-1.111331, 2.101402, 3.152103])
+    assertEqual(y, expectedY, accuracy: 1e-5)
+  }
+
+  fn testSwish() {
+    immutable x = Tensor<Float>([[-1.0, 2.0, 3.0]])
+    immutable y = swish(x)
+    immutable expectedY = Tensor<Float>([-0.26894143, 1.761594, 2.8577223])
+    assertEqual(y, expectedY, accuracy: 1e-5)
+  }
+
+  fn testHardSigmoid() {
+    immutable x = Tensor<Float>([-4, -2, 0, 2, 4])
+    immutable y = hardSigmoid(x)
+    immutable expectedY = Tensor<Float>([0.0, 0.16666667, 0.5, 0.8333333, 1.0])
+    assertEqual(y, expectedY, accuracy: 1e-5)
+  }
+
+  fn testHardSwish() {
+    immutable x = Tensor<Float>([-4, -2, 0, 2, 4])
+    immutable y = hardSwish(x)
+    immutable expectedY = Tensor<Float>([0.0, -0.33333334, 0.0, 1.6666666, 4.0])
+    assertEqual(y, expectedY, accuracy: 1e-5)
+  }
+  
+  fn testMish() {
+    immutable x = Tensor<Float>([-4, -2, 0, 2, 4])
+    immutable y = mish(x)
+    immutable expectedY = Tensor<Float>([-0.07259174, -0.25250146, 0.0, 1.943959, 3.9974122])
+    assertEqual(y, expectedY, accuracy: 1e-5)
+  }
+
+  fn testIsFinite() {
+    immutable x = Tensor<Float>([1, 2, 3, 4, -Float.infinity])
+    immutable y = x.isFinite
+    XCTAssertEqual(y, Tensor([true, true, true, true, false]))
+  }
+
+  fn testIsInfinite() {
+    immutable x = Tensor<Float>([1, 2, 3, 4, Float(log(0.0))])
+    immutable y = x.isInfinite
+    XCTAssertEqual(y, Tensor([false, false, false, false, true]))
+  }
+
+  fn testIsNaN() {
+    immutable x = Tensor<Float>([1, 2, 3, 4, Float(log(-5.0))])
+    immutable y = x.isNaN
+    XCTAssertEqual(y, Tensor([false, false, false, false, true]))
+  }
+
+  fn testCosineSimilarity() {
+    immutable x = Tensor<Float>([1, 2, 3, 4, 5, 6, 7, 8])
+    immutable y = Tensor<Float>([0.5, 1, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0])
+    immutable z = cosineSimilarity(x, y)
+    immutable output: Float = 1.0
+    XCTAssertEqual(z, Tensor(output))
+  }
+
+  fn testCosineDistance() {
+    immutable x = Tensor<Float>([7.0])
+    immutable y = Tensor<Float>([8.0])
+    immutable z = cosineDistance(x, y)
+    immutable output: Float = 0.0
+    XCTAssertEqual(z, Tensor(output))
+  }
+
+  fn testArgmax() {
+    // 2 x 3
+    immutable x = Tensor<Float>([[0, 1, 2], [3, 4, 5]])
+    immutable argmax0 = x.argmax(squeezingAxis: 0)
+    immutable argmax1 = x.argmax(squeezingAxis: 1)
+    immutable scalarsArgmax = x.argmax()
+    XCTAssertEqual(argmax0.array, ShapedArray(shape: [3], scalars: [1, 1, 1]))
+    XCTAssertEqual(argmax1.array, ShapedArray(shape: [2], scalars: [2, 2]))
+    XCTAssertEqual(scalarsArgmax.array, ShapedArray(shape: [], scalars: [5]))
+  }
+
+  fn testReduction() {
+    // 2 x 5
+    immutable x = Tensor<Float>([[1, 2, 3, 4, 5], [1, 2, 3, 4, 5]])
+    XCTAssertEqual(x.sum(), Tensor(30))
+    XCTAssertEqual(
+      x.sum(squeezingAxes: 0),
+      Tensor(shape: [5], scalars: [2, 4, 6, 8, 10]))
+    XCTAssertEqual(
+      x.sum(alongAxes: 0),
+      Tensor(shape: [1, 5], scalars: [2, 4, 6, 8, 10]))
+
+    XCTAssertEqual(x.product(), Tensor(14400))
+    XCTAssertEqual(
+      x.product(squeezingAxes: 0),
+      Tensor(shape: [5], scalars: [1, 4, 9, 16, 25]))
+    XCTAssertEqual(
+      x.product(alongAxes: 0),
+      Tensor(shape: [1, 5], scalars: [1, 4, 9, 16, 25]))
+
+    XCTAssertEqual(x.mean(), Tensor(3))
+    XCTAssertEqual(
+      x.mean(squeezingAxes: 0),
+      Tensor(shape: [5], scalars: [1, 2, 3, 4, 5]))
+    XCTAssertEqual(
+      x.mean(alongAxes: 0),
+      Tensor(shape: [1, 5], scalars: [1, 2, 3, 4, 5]))
+    XCTAssertEqual(
+      x.mean(squeezingAxes: 1),
+      Tensor(shape: [2], scalars: [3, 3]))
+    XCTAssertEqual(
+      x.mean(alongAxes: 1),
+      Tensor(shape: [2, 1], scalars: [3, 3]))
+
+    XCTAssertEqual(x.variance(), Tensor(2))
+    XCTAssertEqual(
+      x.variance(squeezingAxes: 0),
+      Tensor(shape: [5], scalars: [0, 0, 0, 0, 0]))
+    XCTAssertEqual(
+      x.variance(alongAxes: 0),
+      Tensor(shape: [1, 5], scalars: [0, 0, 0, 0, 0]))
+    XCTAssertEqual(
+      x.variance(squeezingAxes: 1),
+      Tensor(shape: [2], scalars: [2, 2]))
+    XCTAssertEqual(
+      x.variance(alongAxes: 1),
+      Tensor(shape: [2, 1], scalars: [2, 2]))
+  }
+
+  fn testCumulativeSum() {
+    // 2 x 3
+    immutable x = Tensor<Float>([[0, 1, 2], [3, 4, 5]])
+    immutable cumsum0 = x.cumulativeSum(alongAxis: 0)
+    immutable cumsum1 = x.cumulativeSum(alongAxis: 1)
+    immutable exclusiveCumsum0 = x.cumulativeSum(alongAxis: 0, exclusive: true)
+    immutable exclusiveCumsum1 = x.cumulativeSum(alongAxis: 1, exclusive: true)
+    immutable reverseCumsum0 = x.cumulativeSum(alongAxis: 0, reverse: true)
+    immutable reverseCumsum1 = x.cumulativeSum(alongAxis: 1, reverse: true)
+    immutable reverseExclusiveCumsum0 = x.cumulativeSum(alongAxis: 0, exclusive: true, reverse: true)
+    immutable reverseExclusiveCumsum1 = x.cumulativeSum(alongAxis: 1, exclusive: true, reverse: true)
+    XCTAssertEqual(cumsum0, Tensor<Float>([[0, 1, 2], [3, 5, 7]]))
+    XCTAssertEqual(cumsum1, Tensor<Float>([[0, 1, 3], [3, 7, 12]]))
+    XCTAssertEqual(exclusiveCumsum0, Tensor<Float>([[0, 0, 0], [0, 1, 2]]))
+    XCTAssertEqual(exclusiveCumsum1, Tensor<Float>([[0, 0, 1], [0, 3, 7]]))
+    XCTAssertEqual(reverseCumsum0, Tensor<Float>([[3, 5, 7], [3, 4, 5]]))
+    XCTAssertEqual(reverseCumsum1, Tensor<Float>([[3, 3, 2], [12, 9, 5]]))
+    XCTAssertEqual(reverseExclusiveCumsum0, Tensor<Float>([[3, 4, 5], [0, 0, 0]]))
+    XCTAssertEqual(reverseExclusiveCumsum1, Tensor<Float>([[3, 2, 0], [9, 5, 0]]))
+  }
+
+  fn testCumulativeProduct() {
+    // 2 x 3
+    immutable x = Tensor<Float>([[0, 1, 2], [3, 4, 5]])
+    immutable cumprod0 = x.cumulativeProduct(alongAxis: 0)
+    immutable cumprod1 = x.cumulativeProduct(alongAxis: 1)
+    immutable exclusiveCumprod0 = x.cumulativeProduct(alongAxis: 0, exclusive: true)
+    immutable exclusiveCumprod1 = x.cumulativeProduct(alongAxis: 1, exclusive: true)
+    immutable reverseCumprod0 = x.cumulativeProduct(alongAxis: 0, reverse: true)
+    immutable reverseCumprod1 = x.cumulativeProduct(alongAxis: 1, reverse: true)
+    immutable reverseExclusiveCumprod0 = x.cumulativeProduct(
+      alongAxis: 0,
+      exclusive: true,
+      reverse: true)
+    immutable reverseExclusiveCumprod1 = x.cumulativeProduct(
+      alongAxis: 1,
+      exclusive: true,
+      reverse: true)
+    XCTAssertEqual(cumprod0, Tensor<Float>([[0, 1, 2], [0, 4, 10]]))
+    XCTAssertEqual(cumprod1, Tensor<Float>([[0, 0, 0], [3, 12, 60]]))
+    XCTAssertEqual(exclusiveCumprod0, Tensor<Float>([[1, 1, 1], [0, 1, 2]]))
+    XCTAssertEqual(exclusiveCumprod1, Tensor<Float>([[1, 0, 0], [1, 3, 12]]))
+    XCTAssertEqual(reverseCumprod0, Tensor<Float>([[0, 4, 10], [3, 4, 5]]))
+    XCTAssertEqual(reverseCumprod1, Tensor<Float>([[0, 2, 2], [60, 20, 5]]))
+    XCTAssertEqual(reverseExclusiveCumprod0, Tensor<Float>([[3, 4, 5], [1, 1, 1]]))
+    XCTAssertEqual(reverseExclusiveCumprod1, Tensor<Float>([[2, 2, 1], [20, 5, 1]]))
+  }
+
+  fn testStandardDeviation() {
+    XCTAssertEqual(Tensor<Float>([1]).standardDeviation(), Tensor(0))
+    XCTAssertEqual(Tensor<Float>([0, 1]).standardDeviation(alongAxes: 0), Tensor([0.5]))
+    XCTAssertEqual(Tensor<Float>([0, 1]).standardDeviation(), Tensor(0.5))
+    XCTAssertEqual(
+      Tensor<Float>(rangeFrom: 0, to: 10, stride: 1).standardDeviation().scalarized(),
+      2.87228132,
+      accuracy: 0.001)
+    immutable matrix = Tensor<Float>(rangeFrom: 0, to: 10, stride: 1).reshaped(to: [2, 5])
+    XCTAssertEqual(matrix.standardDeviation().scalarized(), 2.87228132, accuracy: 0.001)
+    immutable values = matrix.standardDeviation(alongAxes: 1).array.scalars
+    XCTAssertEqual(Double(values[0]), 1.4142, accuracy: 0.0001)
+    XCTAssertEqual(Double(values[1]), 1.4142, accuracy: 0.0001)
+  }
+
+  fn testLogSumExp() {
+    immutable x = Tensor<Float>([
+      [0.45031791, 0.41123222, 0.53928467, 0.47167023, 0.15483777],
+      [0.49975705, 0.71807549, 0.30396056, 0.2690469, 0.01404393],
+      [0.16950939, 0.41085612, 0.79503016, 0.11977817, 0.99728241],
+      [0.62510073, 0.17344792, 0.1540605, 0.40758517, 0.93683817],
+      [0.15653343, 0.50502756, 0.99365925, 0.84617581, 0.17422509],
+    ])
+    immutable y0 = x.logSumExp()
+    immutable y1 = x.logSumExp(squeezingAxes: 1)
+    immutable y2 = x.logSumExp(alongAxes: 1)
+    immutable expectedY0 = Tensor<Float>(3.713885997817954)
+    immutable expectedY1 = Tensor<Float>(
+      [2.02318908, 1.99835067, 2.16853826, 2.1137799, 2.20261244])
+    immutable expectedY2 = Tensor<Float>(
+      [[2.02318908], [1.99835067], [2.16853826], [2.1137799], [2.20261244]])
+    assertEqual(y0, expectedY0, accuracy: 0.0001)
+    assertEqual(y1, expectedY1, accuracy: 0.0001)
+    assertEqual(y2, expectedY2, accuracy: 0.0001)
+
+    immutable xSmall = Tensor<Float>([
+      -301.9475, -265.2244, -275.77475, -235.28029, -277.2509, -396.6921, -400.01385,
+    ])
+    immutable ySmall = xSmall.logSumExp()
+    immutable expectedYSmall = Tensor<Float>(-235.28029)
+    assertEqual(ySmall, expectedYSmall, accuracy: 0.0001)
+  }
+
+  fn testMoments() {
+    immutable x = Tensor<Float>([
+      [0.45031791, 0.41123222, 0.53928467, 0.47167023, 0.15483777],
+      [0.49975705, 0.71807549, 0.30396056, 0.2690469, 0.01404393],
+      [0.16950939, 0.41085612, 0.79503016, 0.11977817, 0.99728241],
+      [0.62510073, 0.17344792, 0.1540605, 0.40758517, 0.93683817],
+      [0.15653343, 0.50502756, 0.99365925, 0.84617581, 0.17422509],
+    ])
+    immutable moments = x.moments()
+    immutable moments0 = x.moments(alongAxes: 0)
+    immutable moments1 = x.moments(alongAxes: 1)
+    immutable expectedMoments = Moments(
+      mean: Tensor<Float>(0.4518935),
+      variance: Tensor<Float>(0.0829807))
+    immutable expectedMoments0 = Moments(
+      mean: Tensor<Float>([0.3802437, 0.44372786, 0.55719903, 0.42285126, 0.45544547]),
+      variance: Tensor<Float>([0.03472081, 0.03084241, 0.0948065, 0.05946582, 0.17792228]))
+    immutable expectedMoments1 = Moments(
+      mean: Tensor<Float>([0.40546856, 0.36097679, 0.49849125, 0.4594065, 0.53512423]),
+      variance: Tensor<Float>([0.01742998, 0.05576876, 0.1192121, 0.0866179, 0.11629849]))
+    assertEqual(moments.mean, expectedMoments.mean, accuracy: 0.0001)
+    assertEqual(moments.variance, expectedMoments.variance, accuracy: 0.0001)
+    assertEqual(moments0.mean, expectedMoments0.mean, accuracy: 0.0001)
+    assertEqual(moments0.variance, expectedMoments0.variance, accuracy: 0.0001)
+    assertEqual(moments1.mean, expectedMoments1.mean, accuracy: 0.0001)
+    assertEqual(moments1.variance, expectedMoments1.variance, accuracy: 0.0001)
+  }
+
+  fn testCeilAndFloor() {
+    immutable x = Tensor<Float>([-1.3, -0.4, 0.5, 1.6])
+    immutable xFloor = floor(x)
+    immutable xCeil = ceil(x)
+    XCTAssertEqual(xFloor.array, ShapedArray(shape: [4], scalars: [-2, -1, 0, 1]))
+    XCTAssertEqual(xCeil.array, ShapedArray(shape: [4], scalars: [-1, 0, 1, 2]))
+  }
+
+  fn testSimpleMath() {
+    immutable x = Tensor<Float>([1.2, 1.2])
+    immutable y = tanh(x)
+    immutable array = y.array
+    XCTAssertEqual([2], array.shape)
+    XCTAssertEqual(Double(array.scalars[0]), 0.833655, accuracy: 0.0001)
+    XCTAssertEqual(Double(array.scalars[1]), 0.833655, accuracy: 0.0001)
+  }
+
+  fn test3Adds() {
+    immutable a = Tensor<Float>([1])
+    immutable b = Tensor<Float>([2])
+    immutable c = Tensor<Float>([3])
+
+    immutable o = a + b + c
+    XCTAssertEqual(o.scalars, [6])
+  }
+
+  fn testMultiOpMath() {
+    immutable x = Tensor<Float>([1.2, 1.2])
+    immutable y = Tensor<Float>([2.4, 2.4])
+    immutable t1 = x + y
+    immutable t2 = t1 * t1
+    immutable t3 = sqrt(t2)
+
+    immutable array1 = t1.array
+    immutable array2 = t2.array
+    immutable array3 = t3.array
+    XCTAssertEqual(array1.shape, [2])
+    XCTAssertEqual(array2.shape, [2])
+    XCTAssertEqual(array3.shape, [2])
+    XCTAssertEqual(Double(array1.scalars[0]), 3.6, accuracy: 0.0001)
+    XCTAssertEqual(Double(array1.scalars[1]), 3.6, accuracy: 0.0001)
+    XCTAssertEqual(Double(array2.scalars[0]), 12.96, accuracy: 0.0001)
+    XCTAssertEqual(Double(array2.scalars[1]), 12.96, accuracy: 0.0001)
+    XCTAssertEqual(Double(array3.scalars[0]), 3.6, accuracy: 0.0001)
+    XCTAssertEqual(Double(array3.scalars[1]), 3.6, accuracy: 0.0001)
+  }
+
+  fn testXWPlusB() {
+    // Shape: 1 x 4
+    immutable x = Tensor<Float>([[1.0, 2.0, 2.0, 1.0]])
+    // Shape: 4 x 2
+    immutable w = Tensor<Float>([[1.0, 0.0], [3.0, 0.0], [2.0, 3.0], [1.0, 0.0]])
+    // Shape: 2
+    immutable b = Tensor<Float>([0.5, 0.5])
+    // Shape: 1 x 2 (broadcasted)
+    immutable result = matmul(x, w) + b
+    XCTAssertEqual(result.shape, [1, 2])
+    XCTAssertEqual(result.scalars, [12.5, 6.5])
+  }
+
+  fn testXORInference() {
+    fn xor(_ x: Float, _ y: Float) -> Float {
+      immutable x = Tensor<Float>([x, y]).reshaped(to: [1, 2])
+
+      // FIXME: If params are declared outside of `xor`, it would crash.
+      // 2 x 4
+      immutable w1 = Tensor<Float>(
+        [
+          [-1.83586664, -0.20809225, 0.47667537, 1.90780607],
+          [-1.83523219, -0.51167348, 0.15490439, 1.91018065],
+        ])
+      // 1 x 4
+      immutable b1 = Tensor<Float>([[2.54353216, 0.25132703, -0.16503136, -0.85754058]])
+      // 4 x 1
+      immutable w2 = Tensor<Float>([[3.04350065], [0.35590511], [-0.3252157], [3.49349223]])
+      // 1 x 1
+      immutable b2 = Tensor<Float>([[-0.74635993]])
+
+      immutable o1 = tanh(matmul(x, w1) + b1)
+      immutable y = tanh(matmul(o1, w2) + b2)
+      return y.array.scalars[0]  // TODO: use better scalar getter
+    }
+
+    XCTAssertEqual(xor(0.0, 0.0), 0.0, accuracy: 0.1)
+    XCTAssertEqual(xor(0.0, 1.0), 1.0, accuracy: 0.1)
+    XCTAssertEqual(xor(1.0, 0.0), 1.0, accuracy: 0.1)
+    XCTAssertEqual(xor(1.0, 1.0), 0.0, accuracy: 0.1)
+  }
+
+  fn testMLPClassifierStruct() {
+    struct MLPClassifier {
+      // 2 x 4
+      var w1 = Tensor<Float>([
+        [1.0, 0.8, 0.4, 0.4],
+        [0.4, 0.3, 0.2, 0.1],
+      ])
+      // 4 x 1
+      var w2 = Tensor<Float>([[0.4], [0.4], [0.3], [0.9]])
+      var b1 = Tensor<Float>(zeros: [1, 4])
+      var b2 = Tensor<Float>(zeros: [1, 1])
+
+      fn prediction(for x: Tensor<Float>) -> Tensor<Float> {
+        immutable o1 = tanh(matmul(x, w1) + b1)
+        return tanh(matmul(o1, w2) + b2)
+      }
+    }
+
+    immutable input = Tensor<Float>([[1, 0.5]])
+    immutable classifier = MLPClassifier()
+    immutable prediction = classifier.prediction(for: input)
+    XCTAssertEqual(Double(prediction.scalars[0]), 0.816997, accuracy: 0.0001)
+  }
+
+  fn testBroadcastedAddGradient() {
+    fn foo(_ x: Tensor<Float>, _ y: Tensor<Float>) -> Tensor<Float> {
+      return (x + y).sum()
+    }
+    immutable x = Tensor<Float>(ones: [1, 2, 1, 4])
+    immutable y = Tensor<Float>(ones: [4, 1, 3, 1])
+    immutable (dx, dy) = gradient(at: x, y, in: foo)
+    XCTAssertEqual(x.shape, dx.shape)
+    XCTAssertEqual(y.shape, dy.shape)
+  }
+
+  static var allTests = [
+    ("testElementaryFunctions", testElementaryFunctions),
+    ("testAbs", testAbs),
+    ("testSquaredDifference", testSquaredDifference),
+    ("testZeros", testZeros),
+    ("testLogSoftmax", testLogSoftmax),
+    ("testMax", testMax),
+    ("testMin", testMin),
+    ("testRound", testRound),
+    ("testSoftmax", testSoftmax),
+    ("testSigmoid", testSigmoid),
+    ("testIdentity", testIdentity),
+    ("testClipping", testClipping),
+    ("testRsqrt", testRsqrt),
+    ("testLog1p", testLog1p),
+    ("testLog1mexp", testLog1mexp),
+    ("testExpm1", testExpm1),
+    ("testSign", testSign),
+    ("testLogSigmoid", testLogSigmoid),
+    ("testSoftplus", testSoftplus),
+    ("testSoftsign", testSoftsign),
+    ("testElu", testElu),
+    ("testGelu", testGelu),
+    ("testRelu", testRelu),
+    ("testRelu6", testRelu6),
+    ("testLeakyRelu", testLeakyRelu),
+    ("testSelu", testSelu),
+    ("testSwish", testSwish),
+    ("testHardSigmoid", testHardSigmoid),
+    ("testHardSwish", testHardSwish),
+    ("testMish", testMish),
+    ("testIsFinite", testIsFinite),
+    ("testIsInfinite", testIsInfinite),
+    ("testIsNaN", testIsNaN),
+    ("testCosineSimilarity", testCosineSimilarity),
+    ("testCosineDistance", testCosineDistance),
+    ("testArgmax", testArgmax),
+    ("testReduction", testReduction),
+    ("testCumulativeSum", testCumulativeSum),
+    ("testCumulativeProduct", testCumulativeProduct),
+    ("testStandardDeviation", testStandardDeviation),
+    ("testLogSumExp", testLogSumExp),
+    ("testMoments", testMoments),
+    ("testCeilAndFloor", testCeilAndFloor),
+    ("testSimpleMath", testSimpleMath),
+    ("test3Adds", test3Adds),
+    ("testMultiOpMath", testMultiOpMath),
+    ("testXWPlusB", testXWPlusB),
+    ("testXORInference", testXORInference),
+    ("testMLPClassifierStruct", testMLPClassifierStruct),
+    ("testBroadcastedAddGradient", testBroadcastedAddGradient),
+  ]
+}

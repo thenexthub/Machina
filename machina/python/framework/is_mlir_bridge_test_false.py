@@ -1,0 +1,36 @@
+###############################################################################
+#                                                                             #
+#   Copyright (c) 2025, NeXTHub Corporation. All Rights Reserved.             #
+#   DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.             #
+#                                                                             #
+#   Author: Tunjay Akbarli                                                    #
+#   Date: Monday, July 14, 2025.                                              #
+#                                                                             #
+#   Licensed under the Apache License, Version 2.0 (the "License");           #
+#   you may not use this file except in compliance with the License.          #
+#   You may obtain a copy of the License at:                                  #
+#                                                                             #
+#       http://www.apache.org/licenses/LICENSE-2.0                            #
+#                                                                             #
+#   Unless required by applicable law or agreed to in writing, software       #
+#   distributed under the License is distributed on an "AS IS" BASIS,         #
+#   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  #
+#   See the License for the specific language governing permissions and       #
+#   limitations under the License.                                            #
+#                                                                             #
+#   Please contact NeXTHub Corporation, 651 N Broad St, Suite 201,            #
+#   Middletown, DE 19709, New Castle County, USA.                             #
+#                                                                             #
+###############################################################################
+"""Including this as a dependency will result in tests NOT using MLIR bridge.
+
+This function is defined by default in test_util.py to None. The test_util then
+attempts to import this module. If this file is made available through the BUILD
+rule, then this function is overridden and will instead cause Tensorflow graphs
+to be always NOT be compiled with MLIR bridge.
+"""
+
+
+def is_mlir_bridge_enabled():
+  """Returns false if the MLIR bridge should be not be enabled for tests."""
+  return False

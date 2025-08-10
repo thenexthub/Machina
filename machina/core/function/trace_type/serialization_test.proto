@@ -1,0 +1,21 @@
+syntax = "proto2";
+
+package machina.core.function.trace_type.serialization_test;
+
+import "machina/core/function/trace_type/serialization.proto";
+
+// Represents a class with just two fields.
+message MyCustomRepresentation {
+  optional int32 index = 1;
+  optional string name = 2;
+}
+
+// Represents a class that is composed of multiple SerializedTraceType objects.
+message MyCompositeRepresentation {
+  repeated machina.core.function.trace_type.serialization.SerializedTraceType
+      elements = 1;
+}
+
+message MyMultiClassRepresentation {
+  optional int32 id = 1;
+}

@@ -1,0 +1,74 @@
+/*
+ *
+ * Copyright (c) 2025, NeXTHub Corporation. All Rights Reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ * 
+ * Author: Tunjay Akbarli
+ * Date: Saturday, June 21, 2025.
+ * 
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at:
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ * 
+ * Please contact NeXTHub Corporation, 651 N Broad St, Suite 201,
+ * Middletown, DE 19709, New Castle County, USA.
+ *
+ */
+
+#include "machina/core/common_runtime/pluggable_device/pluggable_device_context.h"
+
+#include <functional>
+
+#include "absl/status/status.h"
+#include "machina/core/common_runtime/device/device_event_mgr.h"
+#include "machina/core/common_runtime/pluggable_device/pluggable_device_util.h"
+#include "machina/core/framework/device.h"
+#include "machina/core/framework/device_base.h"
+#include "machina/core/framework/tensor.h"
+#include "machina/core/platform/status.h"
+#include "machina/core/platform/stringpiece.h"
+
+namespace machina {
+
+void PluggableDeviceContext::CopyCPUTensorToDevice(
+    const Tensor* cpu_tensor, Device* device, Tensor* device_tensor,
+    StatusCallback done, bool sync_dst_compute) const {
+  PluggableDeviceUtil::CopyCPUTensorToPluggableDevice(
+      cpu_tensor, this, device, device_tensor, done, sync_dst_compute);
+}
+
+void PluggableDeviceContext::CopyDeviceTensorToCPU(
+    const Tensor* device_tensor, absl::string_view tensor_name, Device* device,
+    Tensor* cpu_tensor, StatusCallback done) {
+  PluggableDeviceUtil::CopyPluggableDeviceTensorToCPU(
+      device, this, device_tensor, cpu_tensor, done);
+}
+
+void PluggableDeviceContext::CopyTensorInSameDevice(const Tensor* input_tensor,
+                                                    Device* device,
+                                                    Tensor* output_tensor,
+                                                    StatusCallback done) const {
+  PluggableDeviceUtil::CopyPluggableDeviceTensorToSameDevice(
+      device, this, input_tensor, output_tensor, done);
+}
+
+absl::Status PluggableDeviceContext::ThenExecute(Device* device,
+                                                 se::Stream* stream,
+                                                 std::function<void()> func) {
+  const DeviceBase::AcceleratorDeviceInfo* device_info =
+      device->machina_accelerator_device_info();
+  device_info->event_mgr->ThenExecute(stream, func);
+  return absl::OkStatus();
+}
+
+bool PluggableDeviceContext::IsPluggableDevice() { return true; }
+
+}  // namespace machina

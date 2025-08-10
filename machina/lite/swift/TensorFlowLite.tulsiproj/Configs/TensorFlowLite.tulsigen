@@ -1,0 +1,61 @@
+{
+  "additionalFilePaths" : [
+    "machina/lite/swift/BUILD"
+  ],
+  "buildTargets" : [
+    "//machina/lite/swift:TensorFlowLiteAllDelegates",
+    "//machina/lite/swift:Tests",
+    "//machina/lite/swift:TestsLibrary"
+  ],
+  "optionSet" : {
+    "BazelBuildOptionsDebug" : {
+      "p" : "$(inherited)"
+    },
+    "BazelBuildOptionsRelease" : {
+      "p" : "$(inherited)"
+    },
+    "BazelBuildStartupOptionsDebug" : {
+      "p" : "$(inherited)"
+    },
+    "BazelBuildStartupOptionsRelease" : {
+      "p" : "$(inherited)"
+    },
+    "BuildActionPostActionScript" : {
+      "p" : "$(inherited)"
+    },
+    "BuildActionPreActionScript" : {
+      "p" : "$(inherited)"
+    },
+    "CLANG_CXX_LANGUAGE_STANDARD" : {
+      "p" : "c++14"
+    },
+    "CommandlineArguments" : {
+      "p" : "$(inherited)"
+    },
+    "EnvironmentVariables" : {
+      "p" : "$(inherited)"
+    },
+    "LaunchActionPostActionScript" : {
+      "p" : "$(inherited)"
+    },
+    "LaunchActionPreActionScript" : {
+      "p" : "$(inherited)"
+    },
+    "ProjectGenerationCompilationMode" : {
+      "p" : "opt"
+    },
+    "TestActionPostActionScript" : {
+      "p" : "$(inherited)"
+    },
+    "TestActionPreActionScript" : {
+      "p" : "$(inherited)"
+    }
+  },
+  "projectName" : "TensorFlowLite",
+  "sourceFilters" : [
+    "machina/lite/c",
+    "machina/lite/swift",
+    "machina/lite/swift/Sources",
+    "machina/lite/swift/Tests"
+  ]
+}

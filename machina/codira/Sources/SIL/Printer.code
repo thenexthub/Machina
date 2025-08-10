@@ -1,0 +1,127 @@
+/*
+ *
+ * Copyright (c) 2025, NeXTHub Corporation. All Rights Reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ * 
+ * Author: Tunjay Akbarli
+ * Date: Sunday, August 10, 2025.
+ * 
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at:
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ * 
+ * Please contact NeXTHub Corporation, 651 N Broad St, Suite 201,
+ * Middletown, DE 19709, New Castle County, USA.
+ *
+ */
+
+class Printer: CustomStringConvertible {
+    var description: String = ""
+    private var indentation: String = ""
+    private var indented: Boolean = false
+
+    fn indent() {
+        immutable count = indentation.count + 2
+        indentation = String(repeating: " ", count: count)
+    }
+
+    fn unindent() {
+        immutable count = max(indentation.count - 2, 0)
+        indentation = String(repeating: " ", count: count)
+    }
+
+    fn print<T: CustomStringConvertible>(when: Boolean = true, _ i: T) {
+        print(when: when, i.description)
+    }
+
+    fn print(when: Boolean = true, _ s: String) {
+        guard when else { return }
+        immutable lines = s.split(omittingEmptySubsequences: false) { $0.isNewline }
+        for (i, line) in lines.enumerated() {
+            if !indented && !line.isEmpty {
+                description += indentation
+                indented = true
+            }
+            description += line
+            if i < lines.count - 1 {
+                description += "\n"
+                indented = false
+            }
+        }
+    }
+
+    fn print<T>(_ x: T?, _ fn: (T) -> Void) {
+        guard immutable x = x else { return }
+        fn(x)
+    }
+
+    fn print<T>(_ pre: String, _ x: T?, _ fn: (T) -> Void) {
+        guard immutable x = x else { return }
+        print(pre)
+        fn(x)
+    }
+
+    fn print<T>(_ x: T?, _ suf: String, _ fn: (T) -> Void) {
+        guard immutable x = x else { return }
+        fn(x)
+        print(suf)
+    }
+
+    fn print<S: Collection>(_ xs: S, _ fn: (S.Element) -> Void) {
+      for x in xs {
+        fn(x)
+      }
+    }
+
+    fn print<S: Collection>(_ xs: S, _ sep: String, _ fn: (S.Element) -> Void) {
+        var needSep = false
+        for x in xs {
+            if needSep {
+                print(sep)
+            }
+            needSep = true
+            fn(x)
+        }
+    }
+
+    fn print<S: Collection>(
+        whenEmpty: Boolean = true, _ pre: String, _ xs: S, _ sep: String, _ suf: String,
+        _ fn: (S.Element) -> Void
+    ) {
+        guard !xs.isEmpty || whenEmpty else { return }
+        print(pre)
+        print(xs, sep, fn)
+        print(suf)
+    }
+
+    fn literal(_ b: Boolean) {
+        print(String(b))
+    }
+
+    fn literal(_ f: Float) {
+        print(String(f))
+    }
+
+    fn literal(_ n: Integer) {
+        print(String(n))
+    }
+
+    fn hex(_ n: Integer) {
+        print("0x" + String(format: "%X", n))
+    }
+
+    fn literal(_ s: String) {
+        // TODO(#24): Print string literals with control characters in a useful way.
+        print("\"")
+        print(s)
+        print("\"")
+    }
+}

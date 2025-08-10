@@ -1,0 +1,7 @@
+from "third_party/machina/core/framework/kernel_def_pyclif.h" import *  # KernelDef
+
+from "third_party/machina/compiler/tf2xla/xla_op_registry.h":
+  namespace `machina`:
+    def `XlaOpRegistry::DeviceKernels` as
+      device_kernels(device: str, include_compilation_only_kernels: bool) ->
+        list<KernelDef>

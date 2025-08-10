@@ -1,0 +1,9 @@
+path: "machina.types.experimental.distributed.PerReplica"
+tf_class {
+  is_instance: "<class \'machina.python.types.distribute.PerReplica\'>"
+  is_instance: "<class \'machina.python.types.distribute.DistributedValues\'>"
+  is_instance: "<type \'object\'>"
+  member_method {
+    name: "__init__"
+  }
+}

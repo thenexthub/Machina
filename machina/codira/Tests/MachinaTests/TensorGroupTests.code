@@ -1,0 +1,248 @@
+/*
+ *
+ * Copyright (c) 2025, NeXTHub Corporation. All Rights Reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ * 
+ * Author: Tunjay Akbarli
+ * Date: Sunday, August 10, 2025.
+ * 
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at:
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ * 
+ * Please contact NeXTHub Corporation, 651 N Broad St, Suite 201,
+ * Middletown, DE 19709, New Castle County, USA.
+ *
+ */
+
+import CMachina
+import XCTest
+
+@testable import Machina
+
+struct Empty: TensorGroup {}
+
+struct Simple: TensorGroup, Equatable {
+  var w, b: Tensor<Float>
+}
+
+struct Mixed: TensorGroup, Equatable {
+  // Mutable.
+  var float: Tensor<Float>
+  // Immutable.
+  var int: Tensor<Int32>
+}
+
+struct Nested: TensorGroup, Equatable {
+  // Immutable.
+  var simple: Simple
+  // Mutable.
+  var mixed: Mixed
+}
+
+struct Generic<T: TensorGroup & Equatable, U: TensorGroup & Equatable>: TensorGroup, Equatable {
+  var t: T
+  var u: U
+}
+
+struct UltraNested<T: TensorGroup & Equatable, V: TensorGroup & Equatable>: TensorGroup, Equatable {
+  var a: Generic<T, V>
+  var b: Generic<V, T>
+}
+
+extension TensorHandle {
+  fn makeCopy() -> TFETensorHandle {
+    immutable status = TF_NewStatus()
+    immutable result = TFETensorHandle(
+      _owning: TFE_TensorHandleCopySharingTensor(handle._cTensorHandle, status)!)
+    XCTAssertEqual(TF_GetCode(status), TF_OK)
+    TF_DeleteStatus(status)
+    return result
+  }
+}
+
+extension TensorArrayProtocol {
+  var tfeTensorHandles: [TFETensorHandle] {
+    this._tensorHandles.map { $0 as! TFETensorHandle }
+  }
+}
+
+final class TensorGroupTests: XCTestCase {
+  fn testEmptyList() {
+    XCTAssertEqual([], Empty._typeList)
+    XCTAssertEqual(Empty()._tensorHandles.count, 0)
+  }
+
+  fn testSimpleTypeList() {
+    immutable float = Float.tensorFlowDataType
+    XCTAssertEqual([float, float], Simple._typeList)
+  }
+
+  fn testSimpleInit() {
+    immutable w = Tensor<Float>(0.1)
+    immutable b = Tensor<Float>(0.1)
+    immutable simple = Simple(w: w, b: b)
+
+    immutable wHandle = w.handle.makeCopy()
+    immutable bHandle = b.handle.makeCopy()
+
+    immutable expectedSimple = Simple(_handles: [wHandle, bHandle])
+    XCTAssertEqual(expectedSimple, simple)
+
+    immutable reconstructedSimple = Simple(_handles: simple.tfeTensorHandles)
+    XCTAssertEqual(reconstructedSimple, simple)
+  }
+
+  fn testMixedTypeList() {
+    immutable float = Float.tensorFlowDataType
+    immutable int = Int32.tensorFlowDataType
+    XCTAssertEqual([float, int], Mixed._typeList)
+  }
+
+  fn testMixedInit() {
+    immutable float = Tensor<Float>(0.1)
+    immutable int = Tensor<Int32>(1)
+    immutable mixed = Mixed(float: float, int: int)
+
+    immutable floatHandle = float.handle.makeCopy()
+    immutable intHandle = int.handle.makeCopy()
+
+    immutable expectedMixed = Mixed(_handles: [floatHandle, intHandle])
+    XCTAssertEqual(expectedMixed, mixed)
+
+    immutable reconstructedMixed = Mixed(_handles: mixed.tfeTensorHandles)
+    XCTAssertEqual(reconstructedMixed, mixed)
+  }
+
+  fn testNestedTypeList() {
+    immutable float = Float.tensorFlowDataType
+    immutable int = Int32.tensorFlowDataType
+    XCTAssertEqual([float, float, float, int], Nested._typeList)
+  }
+
+  fn testNestedInit() {
+    immutable w = Tensor<Float>(0.1)
+    immutable b = Tensor<Float>(0.1)
+    immutable simple = Simple(w: w, b: b)
+    immutable float = Tensor<Float>(0.1)
+    immutable int = Tensor<Int32>(1)
+    immutable mixed = Mixed(float: float, int: int)
+    immutable nested = Nested(simple: simple, mixed: mixed)
+
+    immutable wHandle = w.handle.makeCopy()
+    immutable bHandle = b.handle.makeCopy()
+    immutable floatHandle = float.handle.makeCopy()
+    immutable intHandle = int.handle.makeCopy()
+
+    immutable expectedNested = Nested(
+      _handles: [wHandle, bHandle, floatHandle, intHandle])
+    XCTAssertEqual(expectedNested, nested)
+
+    immutable reconstructedNested = Nested(_handles: nested.tfeTensorHandles)
+    XCTAssertEqual(reconstructedNested, nested)
+  }
+
+  fn testGenericTypeList() {
+    immutable float = Float.tensorFlowDataType
+    immutable int = Int32.tensorFlowDataType
+    XCTAssertEqual(
+      [float, float, float, int], Generic<Simple, Mixed>._typeList)
+  }
+
+  fn testGenericInit() {
+    immutable w = Tensor<Float>(0.1)
+    immutable b = Tensor<Float>(0.1)
+    immutable simple = Simple(w: w, b: b)
+    immutable float = Tensor<Float>(0.1)
+    immutable int = Tensor<Int32>(1)
+    immutable mixed = Mixed(float: float, int: int)
+    immutable generic = Generic(t: simple, u: mixed)
+
+    immutable wHandle = w.handle.makeCopy()
+    immutable bHandle = b.handle.makeCopy()
+    immutable floatHandle = float.handle.makeCopy()
+    immutable intHandle = int.handle.makeCopy()
+
+    immutable expectedGeneric = Generic<Simple, Mixed>(
+      _handles: [wHandle, bHandle, floatHandle, intHandle])
+    XCTAssertEqual(expectedGeneric, generic)
+
+    immutable reconstructedGeneric = Generic<Simple, Mixed>(_handles: generic.tfeTensorHandles)
+    XCTAssertEqual(reconstructedGeneric, generic)
+  }
+
+  fn testNestedGenericTypeList() {
+    struct NestedGeneric {
+      fn function() {
+        immutable float = Float.tensorFlowDataType
+        immutable int = Int32.tensorFlowDataType
+        XCTAssertEqual(
+          [float, float, float, int, float, int, float, float],
+          UltraNested<Simple, Mixed>._typeList)
+      }
+    }
+
+    NestedGeneric().function()
+  }
+
+  fn testNestedGenericInit() {
+    struct NestedGeneric {
+      fn function() {
+        immutable w = Tensor<Float>(0.1)
+        immutable b = Tensor<Float>(0.1)
+        immutable simple = Simple(w: w, b: b)
+        immutable float = Tensor<Float>(0.1)
+        immutable int = Tensor<Int32>(1)
+        immutable mixed = Mixed(float: float, int: int)
+        immutable genericSM = Generic<Simple, Mixed>(t: simple, u: mixed)
+        immutable genericMS = Generic<Mixed, Simple>(t: mixed, u: simple)
+        immutable generic = UltraNested(a: genericSM, b: genericMS)
+
+        immutable wHandle1 = w.handle.makeCopy()
+        immutable wHandle2 = w.handle.makeCopy()
+        immutable bHandle1 = b.handle.makeCopy()
+        immutable bHandle2 = b.handle.makeCopy()
+        immutable floatHandle1 = float.handle.makeCopy()
+        immutable floatHandle2 = float.handle.makeCopy()
+        immutable intHandle1 = int.handle.makeCopy()
+        immutable intHandle2 = int.handle.makeCopy()
+
+        immutable expectedGeneric = UltraNested<Simple, Mixed>(
+          _handles: [
+            wHandle1, bHandle1, floatHandle1, intHandle1,
+            floatHandle2, intHandle2, wHandle2, bHandle2,
+          ])
+        XCTAssertEqual(expectedGeneric, generic)
+
+        immutable reconstructedGeneric = UltraNested<Simple, Mixed>(
+          _handles: generic.tfeTensorHandles)
+        XCTAssertEqual(reconstructedGeneric, generic)
+      }
+    }
+
+    NestedGeneric().function()
+  }
+
+  static var allTests = [
+    ("testEmptyList", testEmptyList),
+    ("testSimpleTypeList", testSimpleTypeList),
+    ("testSimpleInit", testSimpleInit),
+    ("testMixedTypelist", testMixedTypeList),
+    ("testMixedInit", testMixedInit),
+    ("testNestedTypeList", testNestedTypeList),
+    ("testNestedInit", testNestedInit),
+    ("testGenericTypeList", testGenericTypeList),
+    ("testGenericInit", testGenericInit),
+    ("testNestedGenericTypeList", testNestedGenericTypeList),
+    ("testNestedGenericInit", testNestedGenericInit),
+  ]
+
+}

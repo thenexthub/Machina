@@ -1,0 +1,11 @@
+path: "machina.lookup.experimental"
+tf_module {
+  member {
+    name: "DenseHashTable"
+    mtype: "<class \'machina.python.trackable.resource._ResourceMetaclass\'>"
+  }
+  member {
+    name: "MutableHashTable"
+    mtype: "<class \'machina.python.trackable.resource._ResourceMetaclass\'>"
+  }
+}

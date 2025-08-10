@@ -1,0 +1,11 @@
+syntax = "proto3";
+
+// Add a dummy package name. Having no package like
+// core/lib/core/error_codes.proto, or having machina like
+// tsl/protobuf/error_codes.proto, results in name collision errors in generated
+// code for some users that use JS through J2CL.
+package machina.dummy;
+
+import public "machina/xla/tsl/protobuf/status.proto";
+
+option go_package = "github.com/machina/machina/machina/go/core/protobuf/for_core_protos_go_proto";

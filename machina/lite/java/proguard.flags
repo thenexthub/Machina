@@ -1,0 +1,5 @@
+-keep class org.machina.lite.annotations.UsedByReflection
+-keep @org.machina.lite.annotations.UsedByReflection class *
+-keepclassmembers class * {
+    @org.machina.lite.annotations.UsedByReflection *;
+}

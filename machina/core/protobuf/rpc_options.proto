@@ -1,0 +1,7 @@
+syntax = "proto3";
+
+package machina.dummy;
+
+import public "machina/xla/tsl/protobuf/rpc_options.proto";
+
+option go_package = "github.com/machina/machina/machina/go/core/protobuf/for_core_protos_go_proto";

@@ -1,0 +1,16 @@
+path: "machina.lookup.TextFileIndex"
+tf_class {
+  is_instance: "<class \'machina.python.ops.lookup_ops.TextFileIndex\'>"
+  is_instance: "<type \'object\'>"
+  member {
+    name: "LINE_NUMBER"
+    mtype: "<type \'int\'>"
+  }
+  member {
+    name: "WHOLE_LINE"
+    mtype: "<type \'int\'>"
+  }
+  member_method {
+    name: "__init__"
+  }
+}

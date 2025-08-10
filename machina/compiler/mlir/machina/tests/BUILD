@@ -1,0 +1,61 @@
+load("//machina:machina.bzl", "tf_cc_test")
+load("//machina:machina.default.bzl", "filegroup")
+load("//machina/compiler/mlir:glob_lit_test.bzl", "glob_lit_tests")
+
+package(
+    # copybara:uncomment default_applicable_licenses = ["//machina:license"],
+    licenses = ["notice"],
+)
+
+glob_lit_tests(
+    name = "all_tests",
+    data = [":test_utilities"],
+    driver = "@toolchain-project//mlir:run_lit.sh",
+    size_override = {
+        "decompose_resource_ops.mlir": "medium",
+        "layout_optimization_move_transposes_end.mlir": "medium",
+        "layout_optimization_to_nhwc.mlir": "medium",
+    },
+    tags_override = {
+        "optimize.mlir": ["no_rocm"],
+        "tf_optimize.mlir": ["no_rocm"],
+        "tf-reduce-identity.mlir": ["no_windows"],
+    },
+    test_file_exts = ["mlir"],
+)
+
+# Bundle together all of the test utilities that are used by tests.
+filegroup(
+    name = "test_utilities",
+    testonly = True,
+    data = [
+        ":reducer_tester",
+        "//machina/compiler/mlir:tf-opt",
+        "//machina/compiler/mlir:tf-reduce",
+        "@toolchain-project//toolchain:FileCheck",
+        "@toolchain-project//toolchain:not",
+    ],
+)
+
+filegroup(
+    name = "reducer_tester",
+    testonly = True,
+    srcs = glob(
+        [
+            "reducer/*.sh",
+        ],
+    ),
+)
+
+tf_cc_test(
+    name = "xla_sharding_util_test",
+    srcs = ["xla_sharding_util_test.cc"],
+    deps = [
+        "//machina/compiler/mlir/machina:xla_sharding_util",
+        "@com_google_googletest//:gtest_main",
+        "@toolchain-project//toolchain:Support",
+        "@toolchain-project//mlir:IR",
+        "@toolchain-project//mlir:Support",
+        "@local_xla//xla:xla_data_proto_cc",
+    ],
+)

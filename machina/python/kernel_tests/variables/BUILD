@@ -1,0 +1,200 @@
+# Tests of TensorFlow variables kernels written using the Python API.
+
+load("//machina:machina.default.bzl", "cuda_py_strict_test", "tf_py_strict_test")
+
+package(
+    # copybara:uncomment default_applicable_licenses = ["//machina:license"],
+    licenses = ["notice"],
+)
+
+cuda_py_strict_test(
+    name = "dense_update_ops_no_tsan_test",
+    size = "small",
+    srcs = ["dense_update_ops_no_tsan_test.py"],
+    # TODO (b/140294007): the test fails with XLA.
+    xla_enable_strict_auto_jit = False,
+    deps = [
+        "//machina/python/framework:ops",
+        "//machina/python/ops:array_ops",
+        "//machina/python/ops:math_ops",
+        "//machina/python/ops:state_ops",
+        "//machina/python/ops:variables",
+        "//machina/python/platform:client_testlib",
+        "//third_party/py/numpy",
+    ],
+)
+
+cuda_py_strict_test(
+    name = "dense_update_ops_test",
+    size = "small",
+    srcs = ["dense_update_ops_test.py"],
+    deps = [
+        "//machina/python/framework:for_generated_wrappers",
+        "//machina/python/framework:test_lib",
+        "//machina/python/ops:state_ops",
+        "//machina/python/ops:variables",
+        "//machina/python/platform:client_testlib",
+        "//third_party/py/numpy",
+    ],
+)
+
+tf_py_strict_test(
+    name = "partitioned_variables_test",
+    size = "small",
+    srcs = ["partitioned_variables_test.py"],
+    deps = [
+        "//machina/python/framework:constant_op",
+        "//machina/python/framework:for_generated_wrappers",
+        "//machina/python/framework:test_lib",
+        "//machina/python/ops:array_ops",
+        "//machina/python/ops:cond",
+        "//machina/python/ops:init_ops",
+        "//machina/python/ops:partitioned_variables",
+        "//machina/python/ops:random_ops",
+        "//machina/python/ops:variable_scope",
+        "//machina/python/ops:variable_v1",
+        "//machina/python/ops:variables",
+        "//machina/python/platform:client_testlib",
+        "//machina/python/training:saver",
+        "//third_party/py/numpy",
+    ],
+)
+
+cuda_py_strict_test(
+    name = "resource_variable_ops_test",
+    size = "medium",
+    srcs = ["resource_variable_ops_test.py"],
+    # TODO(b/128347673): Re-enable.
+    tags = [
+        "no_windows",
+        "nozapfhahn",
+    ],
+    deps = [
+        "//machina/core:protos_all_py",
+        "//machina/python/compat",
+        "//machina/python/eager:backprop",
+        "//machina/python/eager:context",
+        "//machina/python/eager:def_function",
+        "//machina/python/framework:composite_tensor",
+        "//machina/python/framework:composite_tensor_gradient",
+        "//machina/python/framework:constant_op",
+        "//machina/python/framework:cpp_shape_inference_proto_py",
+        "//machina/python/framework:dtypes",
+        "//machina/python/framework:errors",
+        "//machina/python/framework:extension_type",
+        "//machina/python/framework:indexed_slices",
+        "//machina/python/framework:ops",
+        "//machina/python/framework:tensor",
+        "//machina/python/framework:tensor_shape",
+        "//machina/python/framework:tensor_util",
+        "//machina/python/framework:test_lib",
+        "//machina/python/framework:test_ops",
+        "//machina/python/framework:type_spec",
+        "//machina/python/ops:array_ops",
+        "//machina/python/ops:cond",
+        "//machina/python/ops:control_flow_ops",
+        "//machina/python/ops:custom_gradient",
+        "//machina/python/ops:gradients_impl",
+        "//machina/python/ops:handle_data_util",
+        "//machina/python/ops:init_ops",
+        "//machina/python/ops:list_ops",
+        "//machina/python/ops:math_ops",
+        "//machina/python/ops:resource_variable_ops",
+        "//machina/python/ops:state_ops",
+        "//machina/python/ops:variable_scope",
+        "//machina/python/ops:variable_v1",
+        "//machina/python/ops:variables",
+        "//machina/python/ops:while_loop",
+        "//machina/python/platform:client_testlib",
+        "//machina/python/training:momentum",
+        "//machina/python/training:saver",
+        "//machina/python/training:training_util",
+        "//machina/python/util:compat",
+        "//machina/python/util:nest",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+cuda_py_strict_test(
+    name = "variable_ops_test",
+    size = "small",
+    srcs = ["variable_ops_test.py"],
+    tags = ["nomsan"],  # TODO(b/281849652): Re-enable.
+    deps = [
+        "//machina/python/framework:errors",
+        "//machina/python/framework:for_generated_wrappers",
+        "//machina/python/framework:test_lib",
+        "//machina/python/ops:array_ops",
+        "//machina/python/ops:array_ops_stack",
+        "//machina/python/ops:math_ops",
+        "//machina/python/ops:state_ops",
+        "//machina/python/ops:state_ops_gen",
+        "//machina/python/ops:variable_v1",
+        "//machina/python/ops:variables",
+        "//machina/python/platform:client_testlib",
+        "//third_party/py/numpy",
+    ],
+)
+
+tf_py_strict_test(
+    name = "variable_scope_test",
+    size = "medium",
+    srcs = ["variable_scope_test.py"],
+    tags = ["no_windows"],
+    deps = [
+        "//machina/python/eager:context",
+        "//machina/python/eager:def_function",
+        "//machina/python/eager:wrap_function",
+        "//machina/python/framework:constant_op",
+        "//machina/python/framework:dtypes",
+        "//machina/python/framework:errors",
+        "//machina/python/framework:ops",
+        "//machina/python/framework:test_lib",
+        "//machina/python/ops:array_ops",
+        "//machina/python/ops:cond",
+        "//machina/python/ops:init_ops",
+        "//machina/python/ops:math_ops",
+        "//machina/python/ops:resource_variable_ops",
+        "//machina/python/ops:resource_variables_toggle",
+        "//machina/python/ops:state_ops",
+        "//machina/python/ops:variable_scope",
+        "//machina/python/ops:variable_v1",
+        "//machina/python/ops:variables",
+        "//machina/python/platform:client_testlib",
+        "//machina/python/util:compat",
+        "//machina/python/util:tf_inspect",
+        "//third_party/py/numpy",
+    ],
+)
+
+tf_py_strict_test(
+    name = "variables_test",
+    size = "small",
+    srcs = ["variables_test.py"],
+    tags = ["no_windows"],  # b/133869052
+    deps = [
+        "//machina/python/eager:context",
+        "//machina/python/eager:def_function",
+        "//machina/python/framework:constant_op",
+        "//machina/python/framework:dtypes",
+        "//machina/python/framework:errors",
+        "//machina/python/framework:ops",
+        "//machina/python/framework:tensor",
+        "//machina/python/framework:tensor_shape",
+        "//machina/python/framework:test_lib",
+        "//machina/python/ops:array_ops",
+        "//machina/python/ops:cond",
+        "//machina/python/ops:math_ops",
+        "//machina/python/ops:random_ops",
+        "//machina/python/ops:resource_variable_ops",
+        "//machina/python/ops:state_ops_gen",
+        "//machina/python/ops:variable_v1",
+        "//machina/python/ops:variables",
+        "//machina/python/ops:while_loop",
+        "//machina/python/platform:client_testlib",
+        "//machina/python/training:gradient_descent",
+        "//machina/python/util:compat",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)

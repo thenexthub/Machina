@@ -1,0 +1,55 @@
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+load("//machina:pytype.default.bzl", "pytype_strict_library")
+load("//machina:machina.default.bzl", "tf_python_pybind_extension")
+
+visibility = ["//machina/core/function:__subpackages__"]
+
+package(
+    # copybara:uncomment default_applicable_licenses = ["//machina:license"],
+    default_visibility = visibility,
+)
+
+licenses(["notice"])
+
+cc_library(
+    name = "test_pass_cc",
+    testonly = 1,
+    hdrs = [
+        "test_pass.h",
+    ],
+    deps = [
+        "//machina/compiler/mlir/machina",
+        "//machina/core:test",
+        "//machina/core/ir:Dialect",
+        "//machina/core/platform:logging",
+        "@toolchain-project//mlir:IR",
+        "@toolchain-project//mlir:Pass",
+    ],
+)
+
+tf_python_pybind_extension(
+    name = "test_pass_pybind",
+    testonly = 1,
+    srcs = ["test_pass_pybind.cc"],
+    enable_stub_generation = True,
+    pytype_srcs = [
+        "test_pass_pybind.pyi",
+    ],
+    deps = [
+        ":test_pass_cc",
+        "@pybind11",
+    ],
+)
+
+pytype_strict_library(
+    name = "test_pass_py",
+    testonly = 1,
+    srcs = [
+        "test_pass.py",
+    ],
+    visibility = visibility,
+    deps = [
+        ":test_pass_pybind",
+        "//machina/python:pywrap_machina",  # buildcleaner: keep (required for TF pybind)
+    ],
+)

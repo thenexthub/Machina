@@ -1,0 +1,6 @@
+add_subdirectory(CMachina)
+add_subdirectory(third_party/Experimental)
+add_subdirectory(Tensor)
+add_subdirectory(Machina)
+add_subdirectory(CX10)
+add_subdirectory(x10)

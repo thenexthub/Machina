@@ -1,0 +1,7 @@
+path: "machina.__internal__.monitoring"
+tf_module {
+  member {
+    name: "BoolGauge"
+    mtype: "<type \'type\'>"
+  }
+}

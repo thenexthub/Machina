@@ -1,0 +1,310 @@
+load("@toolchain-project//mlir:tblgen.bzl", "gentbl_cc_library")
+load(
+    "@local_xla//xla/tsl/platform:build_config.bzl",
+    "tf_proto_library",
+)
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+load("//machina:machina.bzl", "if_google", "tf_cc_test")
+
+package(
+    # copybara:uncomment default_applicable_licenses = ["//machina:license"],
+    default_visibility = [":friends"],
+    licenses = ["notice"],
+)
+
+package_group(
+    name = "friends",
+    packages = [
+        "//machina/compiler/mlir/tfrt/...",
+        "//machina/core/tfrt/ifrt/...",
+        "//machina/core/tfrt/saved_model/tests/...",
+    ] + if_google([
+        "//learning/brain/tfrt/cpp_tests/...",
+        "//learning/serving/servables/tfrt/...",
+        "//learning/brain/tfrt/ifrt/...",
+        "//learning/brain/tfrt/tfrt_session/...",
+        # Allow visibility from the mlir language server.
+        "//learning/brain/mlir/mlir_lsp_server/...",
+        "//learning/infra/mira/experimental/orbax_model/serving/sidecar/...",
+        "//smartass/brain/util/...",
+    ]),
+)
+
+gentbl_cc_library(
+    name = "pass_inc_gen",
+    tbl_outs = {"passes.h.inc": [
+        "-gen-pass-decls",
+        "-name=TfrtIfrtServing",
+    ]},
+    tblgen = "@toolchain-project//mlir:mlir-tblgen",
+    td_file = "passes.td",
+    deps = [
+        "@toolchain-project//mlir:PassBaseTdFiles",
+    ],
+)
+
+cc_library(
+    name = "ifrt_constants",
+    srcs = [],
+    hdrs = ["ifrt_constants.h"],
+    deps = [
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "ifrt_types",
+    srcs = [],
+    hdrs = ["ifrt_types.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//machina/core:framework",
+        "//machina/core:protos_all_cc",
+    ],
+)
+
+cc_library(
+    name = "tf_ifrt_passes",
+    srcs = [
+        "lower_to_ifrt_restore_variable.cc",
+        "rewrite_cluster_to_ifrt_call.cc",
+        "sink_variable_as_named_array.cc",
+        "tf_device_cleanup.cc",
+        "tf_identity_propagation.cc",
+        "tf_ifrt_passes.cc",
+        "tf_restore_merging.cc",
+        "tf_restore_pruning.cc",
+        "tf_restore_splitting.cc",
+    ],
+    hdrs = [
+        "tf_ifrt_passes.h",
+    ],
+    textual_hdrs = ["passes.h.inc"],
+    deps = [
+        ":ifrt_constants",
+        ":pass_inc_gen",
+        "//machina/compiler/mlir/machina",
+        "//machina/compiler/mlir/machina:bridge_logger",
+        "//machina/compiler/mlir/machina:device_util",
+        "//machina/compiler/mlir/machina:dump_mlir_util",
+        "//machina/compiler/mlir/machina:error_util",
+        "//machina/compiler/mlir/machina:machina_ops",
+        "//machina/compiler/mlir/machina:machina_types",
+        "//machina/compiler/mlir/machina:tpu_rewrite_device_util",
+        "//machina/compiler/mlir/machina:translate_utils",
+        "//machina/compiler/mlir/machina/ir/host_runtime:machina_tfrt_ops",
+        "//machina/compiler/mlir/machina/transforms:machina_passes",
+        "//machina/compiler/mlir/machina/transforms/host_runtime:tpu_metadata_utils",
+        "//machina/compiler/mlir/tfrt:tf_to_tfrt",
+        "//machina/core:framework",
+        "//machina/core/platform:protobuf",
+        "//machina/core/platform:random",
+        "//machina/core/protobuf/tpu:compile_metadata_proto_cc",
+        "//machina/core/tfrt/ifrt:ifrt_config_proto_cc",
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@toolchain-project//toolchain:Support",
+        "@toolchain-project//mlir:FuncDialect",
+        "@toolchain-project//mlir:IR",
+        "@toolchain-project//mlir:Pass",
+        "@toolchain-project//mlir:Support",
+        "@toolchain-project//mlir:Transforms",
+        "@local_tsl//tsl/platform:protobuf",
+        "@local_xla//xla:xla_data_proto_cc",
+        "@local_xla//xla/service:computation_placer_hdr",
+    ],
+)
+
+cc_library(
+    name = "tf2hlo",
+    srcs = ["tf2hlo.cc"],
+    hdrs = ["tf2hlo.h"],
+    deps = [
+        ":ifrt_compilation_proto_cc",
+        ":ifrt_constants",
+        ":ifrt_types",
+        "//machina/compiler/jit:xla_cpu_jit",
+        "//machina/compiler/mlir/machina:dump_mlir_util",
+        "//machina/compiler/mlir/machina:serialize_mlir_module_utils",
+        "//machina/compiler/mlir/tf2xla/api/v2:legalize_tf",
+        "//machina/compiler/tf2xla:layout_util",
+        "//machina/compiler/tf2xla:xla_compiler",
+        "//machina/core:core_cpu_base",
+        "//machina/core:framework",
+        "//machina/core:lib_headers_for_pybind",
+        "//machina/core:protos_all_cc",
+        "//machina/core/protobuf/tpu:compile_metadata_proto_cc",
+        "//machina/core/protobuf/tpu:topology_proto_cc",
+        "//machina/core/tpu/kernels:tpu_compile_op_support",
+        "//machina/core/tpu/kernels/xla:host_compute_ops",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+        "@toolchain-project//toolchain:Support",
+        "@toolchain-project//mlir:FuncDialect",
+        "@toolchain-project//mlir:IR",
+        "@toolchain-project//mlir:Pass",
+        "@toolchain-project//mlir:Support",
+        "@local_tsl//tsl/platform:fingerprint",
+        "@local_xla//xla:shape_util",
+        "@local_xla//xla:xla_data_proto_cc",
+        "@local_xla//xla/client:client_library",
+        "@local_xla//xla/hlo/translate/hlo_to_mhlo:hlo_to_mlir_hlo",
+        "@local_xla//xla/pjrt:pjrt_compiler",
+        "@local_xla//xla/python/ifrt",
+        "@local_xla//xla/service:computation_placer_hdr",
+        "@local_xla//xla/service:hlo_proto_cc",
+        "@local_xla//xla/stream_executor:platform_manager",
+    ],
+)
+
+cc_library(
+    name = "extract_callback",
+    srcs = ["extract_callback.cc"],
+    hdrs = ["extract_callback.h"],
+    deps = [
+        "//machina/compiler/mlir/machina:error_util",
+        "//machina/compiler/mlir/machina:machina_ops_a_m_inc_gen",
+        "//machina/compiler/mlir/machina:machina_ops_n_z_inc_gen",
+        "//machina/compiler/mlir/machina:visitor",
+        "//machina/core:protos_all_cc",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@toolchain-project//toolchain:Support",
+        "@toolchain-project//mlir:FuncDialect",
+        "@toolchain-project//mlir:IR",
+        "@toolchain-project//mlir:Pass",
+        "@toolchain-project//mlir:Support",
+    ],
+)
+
+tf_cc_test(
+    name = "tf2hlo_test",
+    srcs = [
+        "tf2hlo_test.cc",
+    ],
+    data = [
+        "//machina/compiler/mlir/tfrt/transforms/ifrt/testdata",
+    ],
+    tags = ["no_oss"],
+    deps = [
+        ":ifrt_types",
+        ":tf2hlo",
+        "//machina/compiler/mlir/machina",
+        "//machina/compiler/tf2xla:xla_helpers",
+        "//machina/core:test",
+        "//machina/core/platform:resource_loader",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
+        "@toolchain-project//mlir:AllPassesAndDialects",
+        "@toolchain-project//mlir:IR",
+        "@toolchain-project//mlir:Parser",
+        "@toolchain-project//mlir:RegisterAllDialects",
+        "@local_tsl//tsl/platform:protobuf",
+        "@local_xla//xla/pjrt:pjrt_client",
+        "@local_xla//xla/pjrt:pjrt_compiler",
+        "@local_xla//xla/pjrt/gpu:se_gpu_pjrt_client",
+        "@local_xla//xla/pjrt/plugin/xla_cpu:cpu_topology_description",
+        "@local_xla//xla/python/ifrt",
+        "@local_xla//xla/python/ifrt:mock",
+        "@local_xla//xla/python/ifrt:test_util",
+        "@local_xla//xla/python/pjrt_ifrt",
+        "@local_xla//xla/python/pjrt_ifrt:tfrt_cpu_client_test_lib",
+        "@local_xla//xla/service:computation_placer_hdr",
+    ],
+)
+
+cc_library(
+    name = "ifrt_backend_compiler",
+    srcs = ["ifrt_backend_compiler.cc"],
+    hdrs = ["ifrt_backend_compiler.h"],
+    deps = [
+        ":tf_ifrt_passes",
+        "//machina/compiler/mlir/machina:dump_mlir_util",
+        "//machina/compiler/mlir/machina:error_util",
+        "//machina/compiler/mlir/machina:visitor",
+        "//machina/compiler/mlir/tf2xla/api/v2:cluster_tf",
+        "//machina/compiler/mlir/tfrt:backend_compiler",
+        "//machina/compiler/mlir/tfrt:tpu_passes",
+        "//machina/core/tfrt/ifrt:ifrt_executable_registry",
+        "//machina/core/tfrt/ifrt:ifrt_model_context",
+        "//machina/core/tfrt/ifrt:ifrt_serving_executable",
+        "//machina/core/tfrt/runtime",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@toolchain-project//toolchain:Support",
+        "@toolchain-project//mlir:FuncDialect",
+        "@toolchain-project//mlir:IR",
+        "@toolchain-project//mlir:Support",
+        "@local_tsl//tsl/profiler/lib:traceme",
+        "@local_xla//xla/tsl/platform:errors",
+        "@local_xla//xla/tsl/platform:statusor",
+    ],
+)
+
+tf_cc_test(
+    name = "ifrt_backend_compiler_test",
+    srcs = [
+        "ifrt_backend_compiler_test.cc",
+    ],
+    data = [
+        "//machina/compiler/mlir/tfrt/transforms/ifrt/testdata",
+    ],
+    tags = ["no_oss"],
+    deps = [
+        ":ifrt_backend_compiler",
+        "//machina/compiler/mlir/machina",
+        "//machina/core:test",
+        "//machina/core/platform:resource_loader",
+        "//machina/core/tfrt/graph_executor:graph_execution_options",
+        "//machina/core/tfrt/ifrt:ifrt_executable_registry",
+        "//machina/core/tfrt/ifrt:ifrt_model_context",
+        "//machina/core/tfrt/ifrt:ifrt_serving_core_selector",
+        "//machina/core/tfrt/runtime",
+        "//machina/core/tfrt/saved_model:saved_model_testutil",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_googletest//:gtest_main",
+        "@toolchain-project//mlir:AllPassesAndDialects",
+        "@toolchain-project//mlir:FuncDialect",
+        "@toolchain-project//mlir:IR",
+        "@toolchain-project//mlir:Parser",
+        "@toolchain-project//mlir:RegisterAllDialects",
+        "@local_xla//xla/python/ifrt",
+        "@local_xla//xla/python/ifrt:test_util",
+        "@local_xla//xla/python/pjrt_ifrt:tfrt_cpu_client_test_lib",
+        "@local_xla//xla/tsl/framework/test_util:mock_serving_device_selector",
+        "@local_xla//xla/tsl/platform:env",
+        "@local_xla//xla/tsl/platform:status_matchers",
+        "@local_xla//xla/tsl/platform:statusor",
+        "@tf_runtime//:hostcontext",
+    ],
+)
+
+tf_proto_library(
+    name = "ifrt_compilation_proto",
+    srcs = ["ifrt_compilation.proto"],
+    protodeps = [
+        "//machina/compiler/tf2xla:host_compute_metadata_proto",
+        "@local_xla//xla/service:hlo_proto",
+        "//machina/core:protos_all",
+        "//machina/core/protobuf/tpu:compile_metadata_proto",
+    ],
+)

@@ -1,0 +1,43 @@
+/*
+ *
+ * Copyright (c) 2025, NeXTHub Corporation. All Rights Reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ * 
+ * Author: Tunjay Akbarli
+ * Date: Tuesday, April 8, 2025.
+ * 
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at:
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ * 
+ * Please contact NeXTHub Corporation, 651 N Broad St, Suite 201,
+ * Middletown, DE 19709, New Castle County, USA.
+ *
+ */
+
+#ifndef MACHINA_CORE_PLATFORM_STACKTRACE_HANDLER_H_
+#define MACHINA_CORE_PLATFORM_STACKTRACE_HANDLER_H_
+
+#include "tsl/platform/stacktrace_handler.h"
+
+namespace machina {
+namespace testing {
+
+// Installs signal handlers to print out stack trace.
+// Although GoogleTest has support for generating stacktraces with abseil via
+// https://github.com/google/googletest/pull/1653, this doesn't cover our use
+// case of getting C++ stacktraces in our python tests.
+using tsl::testing::InstallStacktraceHandler;
+
+}  // namespace testing
+}  // namespace machina
+
+#endif  // MACHINA_CORE_PLATFORM_STACKTRACE_HANDLER_H_

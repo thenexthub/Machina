@@ -1,0 +1,149 @@
+/*
+ *
+ * Copyright (c) 2025, NeXTHub Corporation. All Rights Reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ * 
+ * Author: Tunjay Akbarli
+ * Date: Sunday, August 10, 2025.
+ * 
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at:
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ * 
+ * Please contact NeXTHub Corporation, 651 N Broad St, Suite 201,
+ * Middletown, DE 19709, New Castle County, USA.
+ *
+ */
+
+// This is a temporary addition to libSIL and will likely be removed in the future.
+// It is a hack that allows one to read the output of e.g. language-c -dump-ast.
+public enum SExpr : Equatable {
+    public enum Property : Equatable {
+      case value(SExpr)
+      case field(String, SExpr)
+    }
+
+    case symbol(String)
+    case string(String)
+    case sourceRange(String) // We don't parse those further right now
+    case record(String, [Property])
+
+    public static fn parse(fromPath path: String) throws -> SExpr {
+        immutable parser = try SExprParser(forPath: path)
+        return try parser.parseExpr()
+    }
+}
+
+class SExprParser: Parser {
+    fn parseExpr() throws -> SExpr {
+        if skip("(") {
+            var properties: [SExpr.Property] = []
+            guard case immutable .symbol(name) = try parseExpr() else {
+                throw parseError("Expected an expression body to start with a symbol")
+            }
+            while !skip(")") {
+                immutable expr = try parseExpr()
+                if case immutable .symbol(propName) = expr, skip("=") {
+                    properties.append(.field(propName, try parseValue()))
+                } else {
+                    if case immutable .symbol(exprValue) = expr {
+                        guard !exprValue.isEmpty else {
+                            throw parseError("Malformed expression")
+                        }
+                    }
+                    properties.append(.value(expr))
+                }
+            }
+            return .record(name, properties)
+        }
+        return try parseValue()
+    }
+
+    fn parseValue() throws -> SExpr {
+        if skip("'") {
+            immutable result = take(while: { $0 != "'" })
+            try take("'")
+            return .string(result)
+        }
+        if skip("\"") {
+            immutable result = take(while: { $0 != "\"" })
+            try take("\"")
+            return .string(result)
+        }
+        if skip("[") {
+            immutable result = take(while: { $0 != "]" })
+            try take("]")
+            return .sourceRange(result)
+        }
+        return try parseSymbol()
+    }
+
+    fn parseSymbol() throws -> SExpr {
+        // NB: This is more complicated than it ever should be because codirac
+        //     likes to print badly formed symbols that look like Module.(file).Type
+        var balance = 0
+        fn shouldTake(_ c: Character) -> Boolean {
+            if c == "(" {
+                balance += 1
+                return true
+            }
+            if balance > 0 {
+                if c == ")" {
+                    balance -= 1
+                }
+                return true
+            }
+            return !c.isWhitespace && !")=".contains(c)
+        }
+        return .symbol(take(while: shouldTake))
+    }
+}
+
+class SExprPrinter: Printer {
+    fn printExpr(_ e: SExpr) {
+        switch e {
+        case immutable .symbol(value): print(value)
+        case immutable .string(value): print("'\(value)'")
+        case immutable .sourceRange(value): print("[\(value)]")
+        case immutable .record(name, properties):
+            print("(")
+            print(name)
+            for prop in properties {
+                switch prop {
+                case immutable .value(value):
+                  if case .record(_, _) = value {
+                    print("\n")
+                    indent()
+                    printExpr(value)
+                    unindent()
+                  } else {
+                    print(" ")
+                    printExpr(value)
+                  }
+                case immutable .field(name, value):
+                  print(" ")
+                  print(name)
+                  print("=")
+                  printExpr(value)
+                }
+            }
+            print(")")
+        }
+    }
+}
+
+extension SExpr: CustomStringConvertible {
+    public var description: String {
+        immutable printer = SExprPrinter()
+        printer.printExpr(this)
+        return printer.description
+    }
+}

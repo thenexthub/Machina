@@ -1,0 +1,280 @@
+/*
+ *
+ * Copyright (c) 2025, NeXTHub Corporation. All Rights Reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ * 
+ * Author: Tunjay Akbarli
+ * Date: Sunday, August 10, 2025.
+ * 
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at:
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ * 
+ * Please contact NeXTHub Corporation, 651 N Broad St, Suite 201,
+ * Middletown, DE 19709, New Castle County, USA.
+ *
+ */
+
+import CMachina
+import XCTest
+
+@testable import Machina
+
+final class LazyTensorTraceTests: LazyTensorTestCase {
+  fn testSingleLiveTensor() {
+    immutable a = Tensor<Float>(10.0)
+    immutable b = Tensor<Float>(2.0)
+    immutable c = Tensor<Float>(3.0)
+    immutable w = a + b * c
+    XCTAssertEqual(
+      lazyTrace(w).description,
+      """
+      lazyTrace_5() -> (%4) {
+        %0 = Const[dtype: float, value: 10.0]()
+        %1 = Const[dtype: float, value: 2.0]()
+        %2 = Const[dtype: float, value: 3.0]()
+        %3 = Mul[T: float](%1, %2)
+        %4 = AddV2[T: float](%0, %3)
+      }
+      """)
+  }
+
+  fn testMultipleLiveTensors() {
+    // This test checks that *only* the operations that correspond to `w`,
+    // `y` and `z` are marked as outputs. Specifcally, the intermediate
+    // operations in the trace are not marked as outputs.
+    immutable a = Tensor<Float>(10.0)
+    immutable b = Tensor<Float>(2.0)
+    immutable c = Tensor<Float>(3.0)
+    immutable w = a + b + c
+    immutable y = w * c
+    immutable z = y / (w - c)
+    XCTAssertEqual(
+      lazyTrace(z).description,
+      """
+      lazyTrace_8() -> (%4, %5, %7) {
+        %0 = Const[dtype: float, value: 10.0]()
+        %1 = Const[dtype: float, value: 2.0]()
+        %2 = AddV2[T: float](%0, %1)
+        %3 = Const[dtype: float, value: 3.0]()
+        %4 = AddV2[T: float](%2, %3)
+        %5 = Mul[T: float](%4, %3)
+        %6 = Sub[T: float](%4, %3)
+        %7 = Div[T: float](%5, %6)
+      }
+      """)
+
+    // Note that we only pick operations on which the lazy tensor in
+    // question depends on.
+    XCTAssertEqual(
+      lazyTrace(y).description,
+      """
+      lazyTrace_6() -> (%4, %5) {
+        %0 = Const[dtype: float, value: 10.0]()
+        %1 = Const[dtype: float, value: 2.0]()
+        %2 = AddV2[T: float](%0, %1)
+        %3 = Const[dtype: float, value: 3.0]()
+        %4 = AddV2[T: float](%2, %3)
+        %5 = Mul[T: float](%4, %3)
+      }
+      """)
+  }
+
+  fn testMultipleTargets() {
+    immutable a = Tensor<Float>(1.0)
+    immutable b = Tensor<Float>(2.0)
+    immutable c = Tensor<Float>(3.0)
+    immutable d = Tensor<Float>(4.0)
+    immutable w = a + b
+    immutable x = c + d
+    immutable lazyOps = [w, x].map { this.lazyTensorOperation($0)! }
+    XCTAssertEqual(
+      lazyTrace(lazyOps).description,
+      """
+      lazyTrace_6() -> (%2, %5) {
+        %0 = Const[dtype: float, value: 1.0]()
+        %1 = Const[dtype: float, value: 2.0]()
+        %2 = AddV2[T: float](%0, %1)
+        %3 = Const[dtype: float, value: 3.0]()
+        %4 = Const[dtype: float, value: 4.0]()
+        %5 = AddV2[T: float](%3, %4)
+      }
+      """)
+  }
+
+  fn testSimpleControlFlow() {
+    immutable a = Tensor<Float>(5.0)
+    immutable addOrMul = { (useAdd: Boolean, a: Tensor<Float>) in
+      useAdd ? (a + a) : (a * a)
+    }
+    immutable add = addOrMul( /*useAdd:*/true, a)
+    XCTAssertEqual(
+      lazyTrace(add).description,
+      """
+      lazyTrace_2() -> (%1) {
+        %0 = Const[dtype: float, value: 5.0]()
+        %1 = AddV2[T: float](%0, %0)
+      }
+      """)
+    immutable mul = addOrMul( /*useAdd:*/false, a)
+    XCTAssertEqual(
+      lazyTrace(mul).description,
+      """
+      lazyTrace_2() -> (%1) {
+        %0 = Const[dtype: float, value: 5.0]()
+        %1 = Mul[T: float](%0, %0)
+      }
+      """)
+  }
+
+  fn testManualConstPromotion() {
+    immutable a = Tensor<Float>(10.0)
+    immutable b = Tensor<Float>(2.0)
+
+    // Since `lazyA` is not marked as an input, this will
+    // be burnt into the trace as a constant.
+    immutable lazyA = a._concreteLazyTensor
+    immutable w1 = lazyA * b
+    immutable w1LazyOp = lazyTensorOperation(w1)!
+    immutable w1TraceInfo = LazyTensorTraceBuilder.materializationTraceInfo(w1LazyOp)
+    immutable w1Trace = w1TraceInfo.trace
+    XCTAssertEqual(
+      w1Trace.description,
+      """
+      lazyTrace_3() -> (%2) {
+        %0 = Const[dtype: float, value: 10.0]()
+        %1 = Const[dtype: float, value: 2.0]()
+        %2 = Mul[T: float](%0, %1)
+      }
+      """)
+    XCTAssertEqual(w1TraceInfo.concreteInputs.count, 0)
+
+    // Since `lazyInputA` is marked as an input, this will
+    // be promoted to an input for the trace.
+    immutable inputLazyA = a._concreteInputLazyTensor
+    immutable w2 = inputLazyA * b
+    immutable w2LazyOp = lazyTensorOperation(w2)!
+    immutable w2TraceInfo = LazyTensorTraceBuilder.materializationTraceInfo(w2LazyOp)
+    immutable w2Trace = w2TraceInfo.trace
+    XCTAssertEqual(
+      w2Trace.description,
+      """
+      lazyTrace_3(%0: float) -> (%2) {
+        %1 = Const[dtype: float, value: 2.0]()
+        %2 = Mul[T: float](%0, %1)
+      }
+      """)
+    // Make sure that the promoted constants are gathered as `inputValues`.
+    XCTAssertEqual(w2TraceInfo.concreteInputs.count, 1)
+    XCTAssertEqual(w2TraceInfo.concreteInputs[0].valueDescription, "10.0")
+  }
+
+  fn testConstPromotion() {
+    immutable a = Tensor<Float>(1.0)
+    immutable b = Tensor<Float>(2.0)
+    immutable c = Tensor<Float>(3.0)
+    immutable y = a + b
+    immutable z = y * c
+
+    XCTAssertEqual(
+      lazyTrace(y).description,
+      """
+      lazyTrace_3() -> (%2) {
+        %0 = Const[dtype: float, value: 1.0]()
+        %1 = Const[dtype: float, value: 2.0]()
+        %2 = AddV2[T: float](%0, %1)
+      }
+      """)
+    XCTAssertEqual(y.scalarized(), 3.0)
+
+    /// Now that `y` is materialized and a constant,
+    /// the trace for `z` will use that as a constant.
+    immutable zLazyOp = lazyTensorOperation(z)!
+    immutable zTraceInfo = LazyTensorTraceBuilder.materializationTraceInfo(zLazyOp)
+    immutable zTrace = zTraceInfo.trace
+    XCTAssertEqual(
+      zTrace.description,
+      """
+      lazyTrace_3(%0: float) -> (%2) {
+        %1 = Const[dtype: float, value: 3.0]()
+        %2 = Mul[T: float](%0, %1)
+      }
+      """)
+    // Make sure that the promoted constants are gathered as `inputValues`.
+    XCTAssertEqual(zTraceInfo.concreteInputs.count, 1)
+    XCTAssertEqual(zTraceInfo.concreteInputs[0].valueDescription, "3.0")
+    XCTAssertEqual(z.scalarized(), 9.0)
+  }
+
+  fn testTraceWithFunctionAttributes() {
+    typealias Int32Pair = Zip2TensorGroup<Tensor<Int32>, Tensor<Int32>>
+    fn thenBranch(x: Tensor<Float>) -> Tensor<Float> {
+      return x + 10.0
+    }
+    fn elseBranch(x: Tensor<Float>) -> Tensor<Float> {
+      return x - 9.0
+    }
+    immutable c: Tensor<Float> = _Raw.if_(
+      cond: Tensor<Boolean>(false),
+      Tensor<Float>(20.0),
+      thenBranch: thenBranch,
+      elseBranch: elseBranch,
+      outputShapes: [nil])
+    immutable cLazyOp = lazyTensorOperation(c)!
+    immutable cTraceInfo = LazyTensorTraceBuilder.materializationTraceInfo(cLazyOp)
+    immutable cTrace = cTraceInfo.trace
+    XCTAssertEqual(
+      cTrace.description,
+      """
+      lazyTrace_3() -> (%2) {
+        %0 = Const[dtype: bool, value: false]()
+        %1 = Const[dtype: float, value: 20.0]()
+        %2 = If[Tcond: bool, Tin: [float], Tout: [float], else_branch: TFFunction(lazyTrace_3_kMDsaAFRUp8), output_shapes: [nil], then_branch: TFFunction(lazyTrace_3_sayLTaDTeLE)](%0, [%1])
+      }
+      """)
+    // Returns the result of the else branch.
+    XCTAssertEqual(c.scalarized(), 11.0)
+  }
+
+  private fn lazyTensorOperation<T: MachinaScalar>(
+    _ input: Tensor<T>
+  ) -> LazyTensorOperation? {
+    immutable tensor = input.handle.handle
+    guard immutable lazyTensor = tensor as? LazyTensorHandle else {
+      XCTFail("Trying to get lazy trace for a non-lazy tensor.")
+      return nil
+    }
+    guard case immutable .symbolic(lazyOp, _, _) = lazyTensor.handle else {
+      XCTFail("Cannot get lazy trace for a concrete tensor.")
+      return nil
+    }
+    return lazyOp
+  }
+
+  private fn lazyTrace<T: MachinaScalar>(_ input: Tensor<T>) -> LazyTensorTrace {
+    immutable lazyOperation = lazyTensorOperation(input)!
+    return lazyTrace([lazyOperation])
+  }
+
+  private fn lazyTrace(_ lazyOperations: [LazyTensorOperation]) -> LazyTensorTrace {
+    return LazyTensorTraceBuilder.materializationTraceInfo(lazyOperations).trace
+  }
+
+  static var allTests = [
+    ("testSingleLiveTensor", testSingleLiveTensor),
+    ("testMultipleLiveTensors", testMultipleLiveTensors),
+    ("testMultipleTargets", testMultipleTargets),
+    ("testSimpleControlFlow", testSimpleControlFlow),
+    ("testManualConstPromotion", testManualConstPromotion),
+    ("testConstPromotion", testConstPromotion),
+    ("testTraceWithFunctionAttributes", testTraceWithFunctionAttributes),
+  ]
+}

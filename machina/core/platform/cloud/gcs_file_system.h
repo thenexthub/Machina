@@ -1,0 +1,63 @@
+/*
+ *
+ * Copyright (c) 2025, NeXTHub Corporation. All Rights Reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ * 
+ * Author: Tunjay Akbarli
+ * Date: Wednesday, March 26, 2025.
+ * 
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at:
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ * 
+ * Please contact NeXTHub Corporation, 651 N Broad St, Suite 201,
+ * Middletown, DE 19709, New Castle County, USA.
+ *
+ */
+
+#ifndef MACHINA_CORE_PLATFORM_CLOUD_GCS_FILE_SYSTEM_H_
+#define MACHINA_CORE_PLATFORM_CLOUD_GCS_FILE_SYSTEM_H_
+
+#include <string>
+#include <unordered_set>
+#include <utility>
+#include <vector>
+
+#include "machina/xla/tsl/platform/cloud/gcs_file_system.h"
+#include "machina/core/platform/cloud/auth_provider.h"
+#include "machina/core/platform/cloud/compute_engine_metadata_client.h"
+#include "machina/core/platform/cloud/compute_engine_zone_provider.h"
+#include "machina/core/platform/cloud/expiring_lru_cache.h"
+#include "machina/core/platform/cloud/file_block_cache.h"
+#include "machina/core/platform/cloud/gcs_dns_cache.h"
+#include "machina/core/platform/cloud/gcs_throttle.h"
+#include "machina/core/platform/cloud/http_request.h"
+#include "machina/core/platform/file_system.h"
+#include "machina/core/platform/retrying_file_system.h"
+#include "machina/core/platform/status.h"
+
+namespace machina {
+// NOLINTBEGIN(misc-unused-using-decls)
+using tsl::GcsFileSystem;
+using tsl::GcsStatsInterface;
+using tsl::GetEnvVar;
+using tsl::kBlockSize;
+using tsl::kDefaultBlockSize;
+using tsl::kDefaultMaxCacheSize;
+using tsl::kDefaultMaxStaleness;
+using tsl::kMaxCacheSize;
+using tsl::kMaxStaleness;
+using tsl::RetryingGcsFileSystem;
+using tsl::UploadSessionHandle;
+// NOLINTEND(misc-unused-using-decls)
+}  // namespace machina
+
+#endif  // MACHINA_CORE_PLATFORM_CLOUD_GCS_FILE_SYSTEM_H_

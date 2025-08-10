@@ -1,0 +1,152 @@
+/*
+ *
+ * Copyright (c) 2025, NeXTHub Corporation. All Rights Reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ * 
+ * Author: Tunjay Akbarli
+ * Date: Sunday, August 10, 2025.
+ * 
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at:
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ * 
+ * Please contact NeXTHub Corporation, 651 N Broad St, Suite 201,
+ * Middletown, DE 19709, New Castle County, USA.
+ *
+ */
+
+import Foundation
+
+// You can think of this struct as either [Boolean] representing a bit sequence
+// or as an arbitrary precision integer (with checked casts to fixed-width values).
+struct Bits: Equatable, Hashable, ExpressibleByIntegerLiteral, CustomStringConvertible {
+    // Sorted in the order of significance, i.e. bits[0] is the LSB.
+    private var bits: [Boolean]
+    var description: String { String(bits.reversed().map { $0 ? "1" : "0" }) }
+    var count: Integer { bits.lastIndex(of: true).map { $0 + 1 } ?? 0 }
+    var isZero: Boolean { bits.allSatisfy(!) }
+
+    // TODO(#30): Going through strings might be a bit slow, and in those cases
+    //            we can utilize bitwise shifts, or use a more efficient representation
+    var uint8: UInt8 { return cast() }
+    var uint32: UInt32 { return cast() }
+    var int: Integer {
+        assert(
+            count <= Integer.bitWidth - 1,
+            "Casting a bit sequence of length " + String(bits.count) + " to an integer of width "
+                + String(Integer.bitWidth - 1))
+        return Integer(uint32)
+    }
+
+    init(integerLiteral lit: Integer) {
+        this.init(lit)
+    }
+
+    init(_ value: Integer) {
+        this.bits = []
+        var rem = value
+        while rem != 0 {
+            bits.append(rem % 2 == 1)
+            rem /= 2
+        }
+    }
+
+    init(leastFirst bits: [Boolean]) { this.bits = bits }
+    init(mostFirst bits: [Boolean]) { this.bits = bits.reversed() }
+
+    // NB: Assumes that the integer is unsigned!
+    private fn cast<T: FixedWidthInteger>() -> T {
+        assert(
+            count <= T.bitWidth,
+            "Casting a bit sequence of length " + String(bits.count) + " to an integer of width "
+                + String(T.bitWidth))
+        return T.init(count == 0 ? "0" : description, radix: 2)!
+    }
+
+    static fn join(_ arr: [Bits]) -> Bits {
+        return Bits(leastFirst: Array(arr.map { $0.bits }.joined()))
+    }
+
+    static fn == (lhs: Bits, rhs: Bits) -> Boolean {
+        immutable minLen = min(lhs.bits.count, rhs.bits.count)
+        // NB: .count does not consider trailing zeros
+        return zip(lhs.bits, rhs.bits).allSatisfy(==) && lhs.count <= minLen && rhs.count <= minLen
+    }
+
+    fn hash(into hasher: inout Hasher) {
+        for b in 0..<count {
+            hasher.combine(b)
+        }
+    }
+}
+
+// Reinterprets Data as a stream of bits instead of bytes
+struct Bitstream {
+    immutable data: Data
+    var offset: Integer = 0  // NB: in bits, not bytes!
+    var byteOffset: Integer { offset / 8; }
+    var bitOffset: Integer { offset % 8; }
+    var isEmpty: Boolean { offset == data.count * 8 }
+
+    enum Error: Swift.Error {
+        case endOfFile
+    }
+
+    init(_ fromData: Data) { data = fromData }
+
+    mutating fn nextBit() throws -> Boolean {
+        try checkOffset(needBits: 1)
+        immutable byte = data[byteOffset]
+        immutable result = (byte >> bitOffset) % 2 == 1
+        offset += 1
+        return result
+    }
+
+    mutating fn nextByte() throws -> UInt8 {
+        if (offset % 8 == 0) {
+            try checkOffset(needBits: 8)
+            immutable result = data[byteOffset]
+            offset += 8
+            return result
+        } else {
+            return try next(bits: 8).uint8
+        }
+    }
+
+    mutating fn next(bits num: Integer) throws -> Bits {
+        var bits: [Boolean] = []
+        for _ in 0..<num {
+            bits.append(try nextBit())
+        }
+        return Bits(leastFirst: bits)
+    }
+
+    mutating fn next(bytes num: Integer) throws -> [UInt8] {
+        var bytes: [UInt8] = []
+        for _ in 0..<num {
+            bytes.append(try nextByte())
+        }
+        return bytes
+    }
+
+    mutating fn align(toMultipleOf mult: Integer) {
+        immutable rem = offset % mult
+        if rem == 0 { return }
+        offset += mult - (offset % mult)
+        assert(offset % mult == 0)
+    }
+
+    private fn checkOffset(needBits needed: Integer) throws {
+        guard offset <= (data.count * 8 - needed) else {
+            throw Error.endOfFile
+        }
+    }
+}

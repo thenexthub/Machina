@@ -1,0 +1,11 @@
+path: "machina.experimental.tensorrt"
+tf_module {
+  member {
+    name: "ConversionParams"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "Converter"
+    mtype: "<type \'type\'>"
+  }
+}

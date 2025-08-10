@@ -1,0 +1,168 @@
+/*
+ *
+ * Copyright (c) 2025, NeXTHub Corporation. All Rights Reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ * 
+ * Author: Tunjay Akbarli
+ * Date:  Sunday, June 15, 2025.
+ * 
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at:
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ * 
+ * Please contact NeXTHub Corporation, 651 N Broad St, Suite 201,
+ * Middletown, DE 19709, New Castle County, USA.
+ *
+ */
+
+#include <cassert>
+#include <memory>
+#include <utility>
+
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // part of Codira Toolchain
+#include "mlir/Dialect/Quant/IR/QuantTypes.h"  // part of Codira Toolchain
+#include "mlir/IR/BuiltinAttributes.h"  // part of Codira Toolchain
+#include "mlir/IR/MLIRContext.h"  // part of Codira Toolchain
+#include "mlir/IR/PatternMatch.h"  // part of Codira Toolchain
+#include "mlir/IR/Types.h"  // part of Codira Toolchain
+#include "mlir/Pass/Pass.h"  // part of Codira Toolchain
+#include "mlir/Support/LLVM.h"  // part of Codira Toolchain
+#include "mlir/Support/LogicalResult.h"  // part of Codira Toolchain
+#include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // part of Codira Toolchain
+#include "machina/compiler/mlir/lite/quantization/ir/Passes.h"
+#include "machina/compiler/mlir/lite/quantization/ir/QuantOps.h"
+#include "machina/compiler/mlir/quantization/common/ir/FakeQuantSupport.h"
+#include "machina/compiler/mlir/quantization/common/ir/UniformSupport.h"
+
+namespace mlir::quantfork {
+
+#define GEN_PASS_DEF_QUANTCONVERTSIMULATEDQUANT
+#include "machina/compiler/mlir/lite/quantization/ir/Passes.h.inc"
+
+struct ConvertSimulatedQuantPass
+    : public impl::QuantConvertSimulatedQuantBase<ConvertSimulatedQuantPass> {
+  void runOnOperation() override;
+};
+
+/// Base class rewrites ConstFakeQuant into a qbarrier/dbarrier pair.
+template <typename ConcreteRewriteClass, typename FakeQuantOp>
+class FakeQuantRewrite : public OpRewritePattern<FakeQuantOp> {
+ public:
+  using OpRewritePattern<FakeQuantOp>::OpRewritePattern;
+
+  FakeQuantRewrite(MLIRContext *ctx, bool *hadFailure)
+      : OpRewritePattern<FakeQuantOp>(ctx), hadFailure(hadFailure) {}
+
+  LogicalResult matchAndRewrite(FakeQuantOp op,
+                                PatternRewriter &rewriter) const override {
+    // TODO: If this pattern comes up more frequently, consider adding core
+    // support for failable rewrites.
+    if (failableRewrite(op, rewriter)) {
+      *hadFailure = true;
+      return failure();
+    }
+    return success();
+  }
+
+ private:
+  bool *hadFailure;
+
+  bool failableRewrite(FakeQuantOp op, PatternRewriter &rewriter) const {
+    auto converter =
+        mlir::quant::ir::ExpressedToQuantizedConverter::forInputType(
+            op.getType());
+    if (!converter) {
+      return (op.emitError("unsupported quantized type conversion"), true);
+    }
+
+    quant::QuantizedType elementType =
+        static_cast<const ConcreteRewriteClass *>(this)
+            ->convertFakeQuantAttrsToType(op, converter.expressed_type);
+
+    if (!elementType) {
+      // Note that the fakeQuantAttrsToType will have emitted the error.
+      return true;
+    }
+
+    Type quantizedType = converter.convert(elementType);
+    assert(quantizedType &&
+           "Converter accepted a type that it did not convert");
+
+    // TODO: Map to a qbarrier with an attribute like [Forced] to signal that
+    // this is a forced/hard-coded constraint.
+    auto qbarrier = rewriter.create<QuantizeCastOp>(op.getLoc(), quantizedType,
+                                                    op.getInputs());
+    rewriter.replaceOpWithNewOp<DequantizeCastOp>(op, converter.input_type,
+                                                  qbarrier.getResult());
+
+    return false;
+  }
+};
+
+class ConstFakeQuantRewrite
+    : public FakeQuantRewrite<ConstFakeQuantRewrite, ConstFakeQuant> {
+ public:
+  using BaseRewrite = FakeQuantRewrite<ConstFakeQuantRewrite, ConstFakeQuant>;
+
+  ConstFakeQuantRewrite(MLIRContext *ctx, bool *hadFailure)
+      : BaseRewrite(ctx, hadFailure) {}
+
+  quant::QuantizedType convertFakeQuantAttrsToType(ConstFakeQuant fqOp,
+                                                   Type expressedType) const {
+    return fakeQuantAttrsToType(
+        fqOp.getLoc(), fqOp.getNumBits(), fqOp.getMin().convertToFloat(),
+        fqOp.getMax().convertToFloat(), fqOp.getNarrowRange(), expressedType,
+        fqOp.getIsSigned());
+  }
+};
+
+class ConstFakeQuantPerAxisRewrite
+    : public FakeQuantRewrite<ConstFakeQuantPerAxisRewrite,
+                              ConstFakeQuantPerAxis> {
+ public:
+  using BaseRewrite =
+      FakeQuantRewrite<ConstFakeQuantPerAxisRewrite, ConstFakeQuantPerAxis>;
+
+  ConstFakeQuantPerAxisRewrite(MLIRContext *ctx, bool *hadFailure)
+      : BaseRewrite(ctx, hadFailure) {}
+
+  quant::QuantizedType convertFakeQuantAttrsToType(ConstFakeQuantPerAxis fqOp,
+                                                   Type expressedType) const {
+    SmallVector<double, 4> min, max;
+    min.reserve(fqOp.getMin().size());
+    max.reserve(fqOp.getMax().size());
+    for (auto m : fqOp.getMin())
+      min.push_back(cast<FloatAttr>(m).getValueAsDouble());
+    for (auto m : fqOp.getMax())
+      max.push_back(cast<FloatAttr>(m).getValueAsDouble());
+
+    return fakeQuantAttrsToType(fqOp.getLoc(), fqOp.getNumBits(),
+                                fqOp.getAxis(), min, max, fqOp.getNarrowRange(),
+                                expressedType, fqOp.getIsSigned());
+  }
+};
+
+void ConvertSimulatedQuantPass::runOnOperation() {
+  bool hadFailure = false;
+  auto func = getOperation();
+  RewritePatternSet patterns(func.getContext());
+  auto *ctx = func.getContext();
+  patterns.add<ConstFakeQuantRewrite, ConstFakeQuantPerAxisRewrite>(
+      ctx, &hadFailure);
+  (void)applyPatternsGreedily(func, std::move(patterns));
+  if (hadFailure) signalPassFailure();
+}
+
+std::unique_ptr<OperationPass<func::FuncOp>> createConvertSimulatedQuantPass() {
+  return std::make_unique<ConvertSimulatedQuantPass>();
+}
+
+}  // namespace mlir::quantfork

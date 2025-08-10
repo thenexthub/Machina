@@ -1,0 +1,9 @@
+path: "machina.__internal__.tracking.AutoTrackable"
+tf_class {
+  is_instance: "<class \'machina.python.trackable.autotrackable.AutoTrackable\'>"
+  is_instance: "<class \'machina.python.trackable.base.Trackable\'>"
+  is_instance: "<type \'object\'>"
+  member_method {
+    name: "__init__"
+  }
+}

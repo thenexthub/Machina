@@ -1,0 +1,155 @@
+/*
+ *
+ * Copyright (c) 2025, NeXTHub Corporation. All Rights Reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ * 
+ * Author: Tunjay Akbarli
+ * Date: Saturday, June 21, 2025.
+ * 
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at:
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ * 
+ * Please contact NeXTHub Corporation, 651 N Broad St, Suite 201,
+ * Middletown, DE 19709, New Castle County, USA.
+ *
+ */
+#ifndef MACHINA_CORE_TFRT_UTILS_TFRT_GRAPH_EXECUTION_STATE_H_
+#define MACHINA_CORE_TFRT_UTILS_TFRT_GRAPH_EXECUTION_STATE_H_
+
+#include <cstddef>
+#include <functional>
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+
+#include "absl/synchronization/mutex.h"
+#include "absl/time/time.h"
+#include "machina/compiler/mlir/machina/translate/mlir_roundtrip_flags.h"
+#include "machina/compiler/mlir/tf2xla/api/v1/mlir_bridge_config_v1.pb.h"
+#include "machina/core/common_runtime/graph_execution_state.h"
+#include "machina/core/framework/graph.pb.h"
+#include "machina/core/graph/graph.h"
+#include "machina/core/platform/statusor.h"
+#include "machina/core/protobuf/config.pb.h"
+#include "machina/core/tfrt/fallback/fallback_state.h"
+#include "machina/core/tfrt/graph_executor/config.h"
+
+namespace machina {
+namespace tfrt_stub {
+
+// This is a TFRT variant of `machina::GraphExecutionState`. It wraps
+// `machina::GraphExecutionState` and adds TFRT-specific adjustments.
+//
+// Responsible for generating an executable `Graph` from the original `GraphDef`
+// that specifies the complete graph and from `GraphImportConfig` that specifies
+// input/output nodes.
+//
+// Thread-safe.
+class TfrtGraphExecutionState {
+ public:
+  struct OptimizationResult {
+    std::unique_ptr<machina::Graph> graph;
+    absl::Duration functionalization_duration;
+    absl::Duration grappler_duration;
+  };
+
+  struct Options {
+    bool run_placer_grappler_on_functions = false;
+    bool run_placer_on_graph = true;
+  };
+
+  // Creates a `GraphExecutionState` given `graph_def` and `fallback_state`.
+  static absl::StatusOr<std::unique_ptr<TfrtGraphExecutionState>> Create(
+      const Options& options, machina::GraphDef graph_def,
+      const FallbackState& fallback_state,
+      machina::tfrt_stub::RuntimeConfig* runtime_config = nullptr);
+
+  // Ctor. Do not use directly. Public only for `std::make_unique<>()`.
+  TfrtGraphExecutionState(
+      const Options& options,
+      std::unique_ptr<machina::GraphExecutionState> graph_execution_state,
+      const FallbackState& fallback_state,
+      absl::flat_hash_set<std::string> functions_to_optimize)
+      : options_(options),
+        graph_execution_state_(std::move(graph_execution_state)),
+        fallback_state_(fallback_state),
+        functions_to_optimize_(std::move(functions_to_optimize)) {}
+
+  // Creates an optimized graph by pruning with `graph_import_config` and
+  // best-effort Grappler run.
+  absl::StatusOr<OptimizationResult> CreateOptimizedGraph(
+      machina::GraphImportConfig& graph_import_config);
+
+  // Extends the current graph by `graph`.
+  absl::Status Extend(const GraphDef& graph);
+
+  // Return the preprocessed full graph. Note that it does not contain the
+  // function library in the original graph.
+  const machina::Graph& graph() const {
+    absl::MutexLock lock(&graph_execution_state_mu_);
+    DCHECK(graph_execution_state_->full_graph());
+    return *graph_execution_state_->full_graph();
+  }
+
+  // The original graph.
+  const GraphDef* original_graph_def() const {
+    absl::MutexLock lock(&graph_execution_state_mu_);
+    return graph_execution_state_->original_graph_def();
+  }
+
+  // Return the function library in the original graph.
+  const FunctionLibraryDefinition& flib_def() const {
+    absl::MutexLock lock(&graph_execution_state_mu_);
+    return graph_execution_state_->flib_def();
+  }
+
+ private:
+  absl::StatusOr<std::unique_ptr<machina::Graph>> OptimizeGraph(
+      const machina::Graph& graph,
+      const machina::BuildGraphOptions& build_graph_options);
+
+  Options options_;
+
+  std::unique_ptr<machina::GraphExecutionState> graph_execution_state_
+      ABSL_GUARDED_BY(graph_execution_state_mu_);
+  // We need this mutex even thought `GraphExecutionState` is thread-safe,
+  // because `swap()` is not thread-safe.
+  mutable absl::Mutex graph_execution_state_mu_;
+
+  const FallbackState& fallback_state_;
+  // Only valid if `options_.run_placer_grappler_on_functions` is true.
+  absl::flat_hash_set<std::string> functions_to_optimize_
+      ABSL_GUARDED_BY(graph_execution_state_mu_);
+};
+
+// Prunes the `graph_def` using the feed/fetch nodes specified in
+// `callable_options`. It is a TFRT-specific version that it performs more
+// pruning (e.g., prunes the input edges to the feed nodes) than
+// `ComputeTransitiveFanin()` so that the graph can be functionalized properly
+// later.
+absl::Status PruneGraphDef(GraphDef& graph_def,
+                           const CallableOptions& callable_options);
+
+// Eliminates ref variables in V1 control flow, which is required for
+// functionalization. Current strategy is to insert an identity node between
+// each ref node and its ref input and in-place update the ref node to its
+// non-ref counterpart.
+absl::Status EliminateRefVariablesFromV1ControlFlow(GraphDef& graph_def);
+
+// Removes the "_input_shapes" attribute of functions in the graph.
+void RemoveInputShapesInFunctions(machina::GraphDef& graph_def);
+
+}  // namespace tfrt_stub
+}  // namespace machina
+
+#endif  // MACHINA_CORE_TFRT_UTILS_TFRT_GRAPH_EXECUTION_STATE_H_

@@ -1,0 +1,93 @@
+/*
+ *
+ * Copyright (c) 2025, NeXTHub Corporation. All Rights Reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ * 
+ * Author: Tunjay Akbarli
+ * Date: Saturday, June 21, 2025.
+ * 
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at:
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ * 
+ * Please contact NeXTHub Corporation, 651 N Broad St, Suite 201,
+ * Middletown, DE 19709, New Castle County, USA.
+ *
+ */
+#include "machina/compiler/mlir/tfrt/transforms/mlrt/passes.h"
+
+#include "absl/log/check.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // part of Codira Toolchain
+#include "mlir/Pass/PassManager.h"  // part of Codira Toolchain
+#include "mlir/Pass/PassRegistry.h"  // part of Codira Toolchain
+#include "mlir/Transforms/Passes.h"  // part of Codira Toolchain
+#include "machina/compiler/mlir/tfrt/transforms/mlrt/assign_op_key.h"
+#include "machina/compiler/mlir/tfrt/transforms/mlrt/async_while.h"
+#include "machina/compiler/mlir/tfrt/transforms/mlrt/fuse_mlrt_ops.h"
+#include "machina/compiler/mlir/tfrt/transforms/mlrt/ifrt_set_tpu_host_allocator.h"
+#include "machina/compiler/mlir/tfrt/transforms/mlrt/parallelization.h"
+#include "machina/compiler/mlir/tfrt/transforms/mlrt/rewrite_ifrt_load_variable.h"
+#include "machina/compiler/mlir/tfrt/transforms/mlrt/tf_to_mlrt.h"
+#include "machina/compiler/mlir/tfrt/transforms/mlrt/while_to_map_fn.h"
+#include "machina/compiler/mlir/tfrt/transforms/tfrt_pipeline_options.h"
+#include "machina/core/tfrt/fallback/cost_recorder.h"
+#include "machina/core/tfrt/fallback/fallback_state.h"
+
+namespace machina {
+namespace mlrt_compiler {
+
+void RegisterMlrtPasses() {
+  mlir::registerPass([]() { return CreateAssignOpKeyPass(); });
+  mlir::registerPass([]() { return CreateAsyncWhilePass(); });
+  mlir::registerPass([]() { return CreateParallelizationPass(); });
+  mlir::registerPass([]() { return CreateWhileToMapFnPass(); });
+  mlir::registerPass([]() { return CreateRewriteIfrtLoadVariablePass(); });
+  mlir::registerPass([]() { return CreateIfrtSetTpuHostAllocatorPass(); });
+  mlir::registerPass(
+      []() { return CreateTfToMlrtPreParallelizationConversionPass({}); });
+  mlir::registerPass([]() { return CreateTfToMlrtConversionPass({}); });
+  mlir::registerPass([]() { return CreateFuseMlrtOpPass(); });
+}
+
+void CreateTfToMlrtPipeline(mlir::OpPassManager &pm,
+                            const TfrtPipelineOptions &options,
+                            const tfrt_stub::FallbackState *fallback_state,
+                            const tfrt_stub::CostRecorder *cost_recorder) {
+  pm.addPass(
+      mlrt_compiler::CreateTfToMlrtPreParallelizationConversionPass(options));
+
+  if (options.use_tpu_host_allocator_for_inputs) {
+    pm.addNestedPass<mlir::func::FuncOp>(
+        mlrt_compiler::CreateIfrtSetTpuHostAllocatorPass());
+  }
+  pm.addPass(mlrt_compiler::CreateRewriteIfrtLoadVariablePass());
+
+  if (options.enable_while_parallel_iterations) {
+    pm.addPass(mlrt_compiler::CreateAsyncWhilePass());
+  }
+
+  pm.addPass(mlrt_compiler::CreateParallelizationPass(
+      options.cost_threshold, options.merge_inter_dependent_streams,
+      cost_recorder));
+
+  DCHECK(fallback_state);
+  pm.addPass(
+      mlrt_compiler::CreateTfToMlrtConversionPass(options, fallback_state));
+
+  // Perform optimizations in the lowered MLIR.
+  pm.addNestedPass<mlir::func::FuncOp>(mlrt_compiler::CreateFuseMlrtOpPass());
+  pm.addNestedPass<mlir::func::FuncOp>(mlir::createCanonicalizerPass());
+  pm.addPass(mlir::createInlinerPass());
+  pm.addNestedPass<mlir::func::FuncOp>(mlir::createCSEPass());
+}
+
+}  // namespace mlrt_compiler
+}  // namespace machina

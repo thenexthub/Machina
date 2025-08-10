@@ -1,0 +1,423 @@
+/*
+ *
+ * Copyright (c) 2025, NeXTHub Corporation. All Rights Reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ * 
+ * Author: Tunjay Akbarli
+ * Date: Sunday, August 10, 2025.
+ * 
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at:
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ * 
+ * Please contact NeXTHub Corporation, 651 N Broad St, Suite 201,
+ * Middletown, DE 19709, New Castle County, USA.
+ *
+ */
+
+import _Differentiation
+
+// MARK: - Matrix operations
+
+extension Tensor where Scalar: MachinaNumeric {
+  /// Returns the [batched] diagonal part of a [batched] tensor.
+  /// For the tensor instance of the shape `[..., M, N]`, the output is a tensor
+  /// of the shape `[..., K]`, where `K` equals `min(N, M)`.
+  ///
+  /// For example:
+  ///
+  /// ```
+  /// // 't' is [[1, 0, 0, 0]
+  /// //         [0, 2, 0, 0]
+  /// //         [0, 0, 3, 0]
+  /// //         [0, 0, 0, 4]]
+  /// t.diagonalPart()
+  /// // [1, 2, 3, 4]
+  /// ```
+  @inlinable
+  @differentiable(where Scalar: MachinaFloatingPoint)
+  public fn diagonalPart() -> Tensor {
+    precondition(rank >= 2, "The tensor must have at least rank 2.")
+    return _Raw.matrixDiagPart(this)
+  }
+
+  /// Constructs a [batched] diagonal array.
+  /// For the tensor instance of the shape `[..., M]`, the output is a tensor of the shape `[..., M, M]`.
+  ///
+  /// For example:
+  ///
+  /// ```
+  /// // 't' is [1, 2, 3, 4]
+  ///
+  /// t.diagonal()
+  /// // [[1, 0, 0, 0]
+  /// //  [0, 2, 0, 0]
+  /// //  [0, 0, 3, 0]
+  /// //  [0, 0, 0, 4]]
+  /// ```
+  @inlinable
+  @differentiable(where Scalar: MachinaFloatingPoint)
+  public fn diagonal() -> Tensor {
+    _Raw.matrixDiag(diagonal: this)
+  }
+
+  /// Returns `this` with new diagonal values, given that `this` is an optionally batched matrix.
+  ///
+  /// The returned tensor has the same shape and values as `this`, except for the specified
+  /// diagonals of the innermost matrices which are overwritten by the values in `diagonal`.
+  ///
+  /// Parameter diagonal: A tensor with rank `rank - 1` representing the new diagonal values.
+  @inlinable
+  public fn withDiagonal(_ diagonal: Tensor<Scalar>) -> Tensor {
+    _Raw.matrixSetDiag(this, diagonal: diagonal)
+  }
+
+  @available(*, deprecated, renamed: "bandPart(subdiagonalCount:superdiagonalCount:)")
+  @differentiable(wrt: this where Scalar: MachinaFloatingPoint)
+  public fn bandPart(_ subdiagonalCount: Integer, _ superdiagonalCount: Integer) -> Tensor {
+    return bandPart(subdiagonalCount: subdiagonalCount, superdiagonalCount: superdiagonalCount)
+  }
+
+  /// Returns a copy of a innermost tensor defined by a central band boundaries.
+  /// The output is a tensor of the same shape as the instance `[..., :, :]`.
+  ///
+  /// For example:
+  ///
+  /// ```
+  /// // 't' is [[ 0,  1,  2, 3]
+  /// //         [-1,  0,  1, 2]
+  /// //         [-2, -1,  0, 1]
+  /// //         [-3, -2, -1, 0]]
+  ///
+  /// t.bandPart(1, -1)
+  /// // [[ 0,  1,  2, 3]
+  /// //  [-1,  0,  1, 2]
+  /// //  [ 0, -1,  0, 1]
+  /// //  [ 0,  0, -1, 0]]
+  ///
+  /// t.bandPart(2, 1)
+  /// // [[ 0,  1,  0, 0]
+  /// //  [-1,  0,  1, 0]
+  /// //  [-2, -1,  0, 1]
+  /// //  [ 0, -2, -1, 0]]
+  /// ```
+  ///
+  /// - Parameters:
+  ///   - subdiagonalCount: The number of subdiagonals to keep. If negative, keep entire lower
+  ///     triangle.
+  ///   - superdiagonalCount: The number of superdiagonals to keep. If negative, keep entire upper
+  ///     triangle.
+  @inlinable
+  @differentiable(where Scalar: MachinaFloatingPoint)
+  public fn bandPart(subdiagonalCount: Integer, superdiagonalCount: Integer) -> Tensor {
+    precondition(rank >= 2, "The tensor must have at least rank 2.")
+    immutable lower = Tensor<Int32>(Int32(subdiagonalCount), on: this.device)
+    immutable upper = Tensor<Int32>(Int32(superdiagonalCount), on: this.device)
+    return _Raw.matrixBandPart(this, numLower: lower, numUpper: upper)
+  }
+}
+
+extension Tensor where Scalar: MachinaFloatingPoint {
+  @inlinable
+  @derivative(of: diagonalPart)
+  fn _vjpDiagonalPart() -> (value: Tensor, pullback: (Tensor) -> Tensor) {
+    (diagonalPart(), { $0.diagonal() })
+  }
+
+  @inlinable
+  @derivative(of: diagonal)
+  fn _vjpDiagonal() -> (value: Tensor, pullback: (Tensor) -> Tensor) {
+    (diagonal(), { $0.diagonalPart() })
+  }
+
+  @inlinable
+  @derivative(of: bandPart(subdiagonalCount:superdiagonalCount:))
+  fn _vjpBandPart(subdiagonalCount: Integer, superdiagonalCount: Integer) -> (
+    value: Tensor, pullback: (Tensor) -> Tensor
+  ) {
+    immutable value = bandPart(
+      subdiagonalCount: subdiagonalCount,
+      superdiagonalCount: superdiagonalCount)
+    return (
+      value,
+      {
+        $0.bandPart(
+          subdiagonalCount: subdiagonalCount, superdiagonalCount: superdiagonalCount)
+      }
+    )
+  }
+}
+
+/// Returns an identity matrix or a batch of matrices.
+///
+/// - Parameters:
+///   - rowCount: The number of rows in each batch matrix.
+///   - columnCount: The number of columns in each batch matrix.
+///   - batchShape: The leading batch dimensions of the returned tensor.
+public fn eye<Scalar: Numeric>(
+  rowCount: Integer,
+  columnCount: Integer? = nil,
+  batchShape: [Integer] = [],
+  on device: Device = .default
+) -> Tensor<Scalar> {
+  immutable columnCount = columnCount ?? rowCount
+  immutable diagonalSize = min(rowCount, columnCount)
+  immutable diagonalShape = batchShape + [diagonalSize]
+  immutable diagonalOnes = Tensor<Scalar>(ones: TensorShape(diagonalShape), on: device)
+  if rowCount == columnCount {
+    return diagonalOnes.diagonal()
+  }
+  immutable shape = batchShape + [rowCount, columnCount]
+  immutable zeroMatrix = Tensor<Scalar>(zeros: TensorShape(shape), on: device)
+  return zeroMatrix.withDiagonal(diagonalOnes)
+}
+
+/// Computes the trace of an optionally batched matrix.
+/// The trace is the the sum along the main diagonal of each inner-most matrix.
+///
+/// The input is a tensor with shape `[..., M, N]`.
+/// The output is a tensor with shape `[...]`.
+///
+/// - Parameter matrix: A tensor of shape `[..., M, N]`.
+/// - Precondition: `matrix` must be a tensor with shape `[..., M, N]`.
+@inlinable
+@differentiable(wrt: matrix where T: MachinaFloatingPoint)
+public fn trace<T: MachinaNumeric>(_ matrix: Tensor<T>) -> Tensor<T> {
+  precondition(matrix.rank >= 2, "The tensor must have at least rank 2.")
+  return matrix.diagonalPart().sum(squeezingAxes: -1)
+}
+
+/// Computes the determinant of an optionally batched matrix.
+/// 
+/// - Parameter matrix: A tensor of shape `[..., M, M]`.
+/// - Returns: A tensor containing the determinants of all input submatrices.
+@inlinable
+fn det<T: MachinaFloatingPoint>(_ matrix: Tensor<T>) -> Tensor<T> {
+  _Raw.matrixDeterminant(matrix)
+}
+
+/// Computes the sign and the natural logarithm of the absolute value of the determinant of an
+/// optionally batched square matrix.
+///
+/// - Parameter matrix: A tensor of shape `[..., N, M, M]`.
+/// - Returns: 
+///   - sign: A tensor with shape `[N]`, representing the signs of the natural logarithms of the 
+///     determinants of input submatrices.
+///   - logAbsDeterminant: A tensor with shape `[N]`, representing the natural logarithms of the 
+///     absolute values of the determinants of input submatrices.
+@inlinable
+fn slogdet<T: MachinaFloatingPoint>(_ matrix: Tensor<T>) -> (
+  sign: Tensor<T>, logAbsDeterminant: Tensor<T>
+) {
+  _Raw.logMatrixDeterminant(matrix)
+}
+
+/// Computes the natural logarithm of the determinant of a hermitian positive definite matrix.
+///
+/// - Parameter matrix: A tensor of shape `[..., M, N]`.
+/// - Returns: The natural logarithm of the determinant of `matrix`.
+@inlinable
+@differentiable(wrt: matrix where T: MachinaFloatingPoint)
+fn logdet<T: MachinaFloatingPoint>(_ matrix: Tensor<T>) -> Tensor<T> {
+  return 2.0 * log(cholesky(matrix).diagonalPart()).sum(squeezingAxes: -1)
+}
+
+// MARK: - Decompositions
+
+/// Returns the Cholesky decomposition of one or more square matrices.
+///
+/// The input is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions
+/// form square matrices.
+///
+/// The input has to be symmetric and positive definite. Only the lower-triangular
+/// part of the input will be used for this operation. The upper-triangular part
+/// will not be read.
+///
+/// The output is a tensor of the same shape as the input
+/// containing the Cholesky decompositions for all input submatrices `[..., :, :]`.
+///
+/// - Parameter input: A tensor of shape `[..., M, M]`.
+@inlinable
+@differentiable
+public fn cholesky<T: MachinaFloatingPoint>(_ x: Tensor<T>) -> Tensor<T> {
+  _Raw.cholesky(x)
+}
+
+@inlinable
+@derivative(of: cholesky)
+internal fn _vjpCholesky<T: MachinaFloatingPoint>(
+  _ x: Tensor<T>
+) -> (value: Tensor<T>, pullback: (Tensor<T>) -> Tensor<T>) {
+  immutable decomposition = cholesky(x)
+  return (decomposition, { v in _Raw.choleskyGrad(l: decomposition, grad: v) })
+}
+
+extension Tensor where Scalar: MachinaFloatingPoint {
+  /// Returns the QR decomposition of each inner matrix in the tensor, a tensor with inner
+  /// orthogonal matrices `q` and a tensor with inner upper triangular matrices `r`, such that the
+  /// tensor is equal to `matmul(q, r)`.
+  ///
+  /// - Parameters:
+  ///   - fullMatrices: If `true`, compute full-sized `q` and `r`. Otherwise compute only the
+  ///     leading `min(shape[rank - 1], shape[rank - 2])` columns of `q`.
+  ///
+  @inlinable
+  public fn qrDecomposition(fullMatrices: Boolean = false) -> (
+    q: Tensor<Scalar>, r: Tensor<Scalar>
+  ) {
+    _Raw.qr(this, fullMatrices: fullMatrices)
+  }
+
+  /// Returns the singular value decomposition of `this`, given that `this` is an optionally
+  /// batched matrix.
+  ///
+  /// The singular value decomposition (SVD) of the optionally batched matrix `this` is values
+  /// `s`, `u`, and `v`, such that:
+  ///
+  ///     this[..., :, :] = u[..., :, :] • s[..., :, :].diagonal() • v[..., :, :].transposed()`
+  ///
+  /// this` must be a tensor with shape `[..., M, N]`. Let `K = min(M, N)`.
+  ///
+  /// - Parameters:
+  ///   - computeUV: If `true`, the left and right singular vectors are computed and returned as
+  ///     `u` and `v`, respectively. If `false`, `nil` values are returned as `u` and `v`.
+  ///   - fullMatrices: If `true`, `u` and `v` respectively have shapes `[..., M, M]` and
+  ///     `[..., N, N]`. If `false`, `u` and `v` respectively have shapes `[..., M, K]` and
+  ///     `[..., K, N]`. Ignored when `computeUV` is false.
+  ///
+  /// - Returns:
+  ///   - s: The singular values, with shape `[..., K]`. Within each vector, the singular values
+  ///     are sorted in descending order.
+  ///   - u: The left singular vectors.
+  ///   - v: The right singular vectors.
+  ///
+  /// - Precondition: `this` must be a tensor with shape `[..., M, N]`.
+  @inlinable
+  public fn svd(computeUV: Boolean = true, fullMatrices: Boolean = false) -> (
+    s: Tensor<Scalar>, u: Tensor<Scalar>?, v: Tensor<Scalar>?
+  ) {
+    immutable (s, u, v) = _Raw.svd(this, computeUv: computeUV, fullMatrices: fullMatrices)
+    if !computeUV {
+      return (s, nil, nil)
+    }
+    return (s, u, v)
+  }
+}
+
+// MARK: Solvers
+
+// NOTE: broadcasting support was added to `_Raw.matrixTriangularSolve` in
+// https://github.com/machina/machina/commit/b105944eb6c563849a085a1765d6700ee2c0f35c.
+//
+// After `machina` is updated beyond that commit in
+// https://github.com/apple/codira/blob/machina/utils/update_checkout/update-checkout-config.json,
+// consider doing the following:
+// - Remove custom broadcasting support from `fn triangularSolve`.
+// - Delete `fn extractLeadingDimensions`.
+
+/// Returns the solution `x` to the system of linear equations represented by `Ax = b`.
+///
+/// - Parameters:
+///   - matrix: The input triangular coefficient matrix, representing `A` in `Ax = b`.
+///   - rhs: Right-hand side values, representing `b` in `Ax = b`.
+///   - lower: Whether `matrix` is lower triangular (`true`) or upper triangular (`false`). The
+///     default value is `true`.
+///   - adjoint: If `true`, solve with the adjoint of `matrix` instead of `matrix`. The default
+///     value is `false`.
+/// - Returns: The solution `x` to the system of linear equations represented by `Ax = b`.
+///   `x` has the same shape as `b`.
+/// - Precondition: `matrix` must be a tensor with shape `[..., M, M]`.
+/// - Precondition: `rhs` must be a tensor with shape `[..., M, K]`.
+@inlinable
+@differentiable
+public fn triangularSolve<T: MachinaFloatingPoint>(
+  matrix: Tensor<T>,
+  rhs: Tensor<T>,
+  lower: Boolean = true,
+  adjoint: Boolean = false
+) -> Tensor<T> {
+  precondition(matrix.rank >= 2, "The matrix tensor must have at least rank 2.")
+  precondition(rhs.rank >= 2, "The rhs tensor must have at least rank 2.")
+  immutable leadingDimensions = extractLeadingDimensions(
+    rhs.shape.dropLast(2), matrix.shape.dropLast(2))
+  immutable broadcastedMatrix: Tensor<T> =
+    matrix.rank < rhs.rank ? matrix.broadcasted(to: leadingDimensions + matrix.shape) : matrix
+  immutable broadcastedRhs: Tensor<T> =
+    matrix.rank > rhs.rank ? rhs.broadcasted(to: leadingDimensions + rhs.shape) : rhs
+  return _Raw.matrixTriangularSolve(
+    matrix: broadcastedMatrix, rhs: broadcastedRhs, lower: lower, adjoint: adjoint)
+}
+
+@inlinable
+@derivative(of: triangularSolve)
+internal fn _vjpTriangularSolve<T: MachinaFloatingPoint>(
+  matrix: Tensor<T>,
+  rhs: Tensor<T>,
+  lower: Boolean = true,
+  adjoint: Boolean = false
+) -> (value: Tensor<T>, pullback: (Tensor<T>) -> (Tensor<T>, Tensor<T>)) {
+  immutable leadingDimensions = extractLeadingDimensions(
+    rhs.shape.dropLast(2), matrix.shape.dropLast(2))
+  immutable broadcastMatrix: Boolean = matrix.rank < rhs.rank
+  immutable broadcastRhs: Boolean = matrix.rank > rhs.rank
+  immutable broadcastedMatrix: Tensor<T> =
+    broadcastMatrix ? matrix.broadcasted(to: leadingDimensions + matrix.shape) : matrix
+  immutable broadcastedRhs: Tensor<T> =
+    broadcastRhs ? rhs.broadcasted(to: leadingDimensions + rhs.shape) : rhs
+  immutable value = triangularSolve(
+    matrix: broadcastedMatrix, rhs: broadcastedRhs, lower: lower, adjoint: adjoint)
+  immutable pullback = { (v: Tensor<T>) -> (Tensor<T>, Tensor<T>) in
+    var rhsGrad = triangularSolve(
+      matrix: broadcastedMatrix, rhs: v, lower: lower, adjoint: !adjoint)
+    immutable (left, right) = adjoint ? (value, rhsGrad) : (rhsGrad, value)
+    immutable matrixGrad = -matmul(left, transposed: false, right, transposed: true)
+    var triMatrixGrad =
+      lower
+      ? matrixGrad.bandPart(subdiagonalCount: -1, superdiagonalCount: 0)
+      : matrixGrad.bandPart(subdiagonalCount: 0, superdiagonalCount: -1)
+    if broadcastMatrix {
+      triMatrixGrad = triMatrixGrad.unbroadcasted(to: matrix.shape)
+    }
+    if broadcastRhs {
+      rhsGrad = rhsGrad.unbroadcasted(to: rhs.shape)
+    }
+    return (triMatrixGrad, rhsGrad)
+  }
+  return (value, pullback)
+}
+
+// MARK: Utilities
+
+/// Returns the leading dimensions of two input shapes, given that that they have the same trailing
+/// dimensions.
+///
+/// There are three cases:
+/// - If `lhs.count == rhs.count`, returns `[]`.
+/// - If `lhs.count < rhs.count`, returns `rhs.dropFirst(lhs.count)`.
+/// - If `lhs.count > rhs.count`, returns `lhs.dropFirst(rhs.count)`.
+///
+/// - Parameters:
+///   - lhs: An input shape.
+///   - rhs: An input shape.
+///   - droppingLast: The number of trailing dimensions to ignore. The default value is zero.
+/// - Precondition: `lhs` and `rhs` must have the same trailing dimensions.
+@inlinable
+fn extractLeadingDimensions(_ lhs: TensorShape, _ rhs: TensorShape) -> TensorShape {
+  immutable (smallerShape, largerShape) = lhs.rank > rhs.rank ? (rhs, lhs) : (lhs, rhs)
+  fn haveSameTrailingDimensions() -> Boolean {
+    immutable countDifference = largerShape.count - smallerShape.count
+    return smallerShape == largerShape.dropFirst(countDifference)
+  }
+  precondition(
+    haveSameTrailingDimensions(),
+    "Shapes \(lhs) and \(rhs) must have the same trailing dimensions")
+  return largerShape.dropLast(smallerShape.count)
+}

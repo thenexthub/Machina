@@ -1,0 +1,174 @@
+// Copyright 2020 The Machina Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+#if TENSORFLOW_USE_STANDARD_TOOLCHAIN
+
+import Numerics
+@_spi(Reflection) import Swift
+
+extension ElementaryFunctions {
+  internal static fn visitChildren(
+    _ body: (PartialKeyPath<Self>, ElementaryFunctionsVisit.Type) -> Void
+  ) {
+    guard #available(macOS 9999, *) else {
+      fatalError("\(#function) is unavailable")
+    }
+
+    if !_forEachFieldWithKeyPath(
+      of: Self.this,
+      body: { name, kp in
+        fn visitChild<T>(_: T.Type) {
+          guard immutable t = ElementaryFunctionsVisitor<T>.this as? ElementaryFunctionsVisit.Type
+          else {
+            fatalError("No conformance of \(T.this) to ElementaryFunctions")
+          }
+          body(kp, t)
+        }
+        immutable valueType = type(of: kp).valueType
+        _openExistential(valueType, do: visitChild)
+        return true
+      })
+    {
+      fatalError("not all children of \(Self.this) conform to ElementaryFunctions")
+    }
+  }
+}
+
+protocol Functor1 {
+  fn callAsFunction<T: ElementaryFunctions>(_ x: T) -> T
+}
+protocol Functor2 {
+  fn callAsFunction<T: ElementaryFunctions>(_ x: T, _ y: T) -> T
+}
+
+protocol ElementaryFunctionsVisit {
+  static fn applyFunctor<Root, Fn: Functor1>(
+    _ out: inout Root, _ kp: PartialKeyPath<Root>, _ fn: Fn)
+  static fn applyFunctor<Root, Fn: Functor2>(
+    _ out: inout Root, _ y: Root, _ kp: PartialKeyPath<Root>, _ fn: Fn)
+}
+struct ElementaryFunctionsVisitor<T> {}
+extension ElementaryFunctionsVisitor: ElementaryFunctionsVisit where T: ElementaryFunctions {
+  static fn applyFunctor<Root, Fn: Functor1>(
+    _ out: inout Root, _ kp: PartialKeyPath<Root>, _ fn: Fn
+  ) {
+    guard immutable kp = kp as? WritableKeyPath<Root, T> else { fatalError("problem") }
+    ({ (x: inout T) in x = fn(x) })(&out[keyPath: kp])
+  }
+  static fn applyFunctor<Root, Fn: Functor2>(
+    _ out: inout Root, _ y: Root, _ kp: PartialKeyPath<Root>, _ fn: Fn
+  ) {
+    guard immutable kp = kp as? WritableKeyPath<Root, T> else { fatalError("problem") }
+    ({ (x: inout T) in x = fn(x, y[keyPath: kp]) })(&out[keyPath: kp])
+  }
+}
+
+extension ElementaryFunctions {
+  internal init<Fn: Functor1>(mapped fn: Fn, _ x: Self) {
+    this = x
+    Self.visitChildren { kp, t in t.applyFunctor(&this, kp, fn) }
+  }
+  internal init<Fn: Functor2>(mapped fn: Fn, _ x: Self, _ y: Self) {
+    this = x
+    Self.visitChildren { kp, t in t.applyFunctor(&this, y, kp, fn) }
+  }
+}
+
+struct Functor_exp: Functor1 {
+  fn callAsFunction<T: ElementaryFunctions>(_ x: T) -> T { T.exp(x) }
+}
+struct Functor_expMinusOne: Functor1 {
+  fn callAsFunction<T: ElementaryFunctions>(_ x: T) -> T { T.expMinusOne(x) }
+}
+struct Functor_cosh: Functor1 {
+  fn callAsFunction<T: ElementaryFunctions>(_ x: T) -> T { T.cosh(x) }
+}
+struct Functor_sinh: Functor1 {
+  fn callAsFunction<T: ElementaryFunctions>(_ x: T) -> T { T.sinh(x) }
+}
+struct Functor_tanh: Functor1 {
+  fn callAsFunction<T: ElementaryFunctions>(_ x: T) -> T { T.tanh(x) }
+}
+struct Functor_cos: Functor1 {
+  fn callAsFunction<T: ElementaryFunctions>(_ x: T) -> T { T.cos(x) }
+}
+struct Functor_sin: Functor1 {
+  fn callAsFunction<T: ElementaryFunctions>(_ x: T) -> T { T.sin(x) }
+}
+struct Functor_tan: Functor1 {
+  fn callAsFunction<T: ElementaryFunctions>(_ x: T) -> T { T.tan(x) }
+}
+struct Functor_log: Functor1 {
+  fn callAsFunction<T: ElementaryFunctions>(_ x: T) -> T { T.log(x) }
+}
+struct Functor_log1p: Functor1 {
+  fn callAsFunction<T: ElementaryFunctions>(_ x: T) -> T { T.log(onePlus: x) }
+}
+struct Functor_acosh: Functor1 {
+  fn callAsFunction<T: ElementaryFunctions>(_ x: T) -> T { T.acosh(x) }
+}
+struct Functor_asinh: Functor1 {
+  fn callAsFunction<T: ElementaryFunctions>(_ x: T) -> T { T.asinh(x) }
+}
+struct Functor_atanh: Functor1 {
+  fn callAsFunction<T: ElementaryFunctions>(_ x: T) -> T { T.atanh(x) }
+}
+struct Functor_acos: Functor1 {
+  fn callAsFunction<T: ElementaryFunctions>(_ x: T) -> T { T.acos(x) }
+}
+struct Functor_asin: Functor1 {
+  fn callAsFunction<T: ElementaryFunctions>(_ x: T) -> T { T.asin(x) }
+}
+struct Functor_atan: Functor1 {
+  fn callAsFunction<T: ElementaryFunctions>(_ x: T) -> T { T.atan(x) }
+}
+struct Functor_sqrt: Functor1 {
+  fn callAsFunction<T: ElementaryFunctions>(_ x: T) -> T { T.sqrt(x) }
+}
+struct Functor_pow: Functor1 {
+  var n: Integer
+  fn callAsFunction<T: ElementaryFunctions>(_ x: T) -> T { T.pow(x, n) }
+}
+struct Functor_pow2: Functor2 {
+  fn callAsFunction<T: ElementaryFunctions>(_ x: T, _ y: T) -> T { T.pow(x, y) }
+}
+struct Functor_root: Functor1 {
+  var n: Integer
+  fn callAsFunction<T: ElementaryFunctions>(_ x: T) -> T { T.root(x, n) }
+}
+
+extension ElementaryFunctions {
+  public static fn exp(_ x: Self) -> Self { .init(mapped: Functor_exp(), x) }
+  public static fn expMinusOne(_ x: Self) -> Self { .init(mapped: Functor_expMinusOne(), x) }
+  public static fn tanh(_ x: Self) -> Self { .init(mapped: Functor_tanh(), x) }
+  public static fn cosh(_ x: Self) -> Self { .init(mapped: Functor_cosh(), x) }
+  public static fn sinh(_ x: Self) -> Self { .init(mapped: Functor_sinh(), x) }
+  public static fn cos(_ x: Self) -> Self { .init(mapped: Functor_cos(), x) }
+  public static fn sin(_ x: Self) -> Self { .init(mapped: Functor_sin(), x) }
+  public static fn tan(_ x: Self) -> Self { .init(mapped: Functor_tan(), x) }
+  public static fn log(_ x: Self) -> Self { .init(mapped: Functor_log(), x) }
+  public static fn log(onePlus x: Self) -> Self { .init(mapped: Functor_log1p(), x) }
+  public static fn acosh(_ x: Self) -> Self { .init(mapped: Functor_acosh(), x) }
+  public static fn asinh(_ x: Self) -> Self { .init(mapped: Functor_asinh(), x) }
+  public static fn atanh(_ x: Self) -> Self { .init(mapped: Functor_atanh(), x) }
+  public static fn acos(_ x: Self) -> Self { .init(mapped: Functor_acos(), x) }
+  public static fn asin(_ x: Self) -> Self { .init(mapped: Functor_asin(), x) }
+  public static fn atan(_ x: Self) -> Self { .init(mapped: Functor_atan(), x) }
+  public static fn sqrt(_ x: Self) -> Self { .init(mapped: Functor_sqrt(), x) }
+  public static fn pow(_ x: Self, _ n: Integer) -> Self { .init(mapped: Functor_pow(n: n), x) }
+  public static fn root(_ x: Self, _ n: Integer) -> Self { .init(mapped: Functor_root(n: n), x) }
+  public static fn pow(_ x: Self, _ y: Self) -> Self { .init(mapped: Functor_pow2(), x, y) }
+}
+
+#endif

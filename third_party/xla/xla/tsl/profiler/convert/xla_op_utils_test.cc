@@ -1,0 +1,89 @@
+/*
+ *
+ * Copyright (c) 2025, NeXTHub Corporation. All Rights Reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ * 
+ * Author: Tunjay Akbarli
+ * Date:  Sunday, June 15, 2025.
+ * 
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at:
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ * 
+ * Please contact NeXTHub Corporation, 651 N Broad St, Suite 201,
+ * Middletown, DE 19709, New Castle County, USA.
+ *
+ */
+
+#include "machina/xla/tsl/profiler/convert/xla_op_utils.h"
+
+#include <gtest/gtest.h>
+#include "machina/xla/tsl/platform/test.h"
+
+namespace tsl {
+namespace profiler {
+namespace {
+
+TEST(XlaOpUtilsTest, HloModuleNameWithProgramId) {
+  EXPECT_EQ("module(123)", HloModuleNameWithProgramId("module", 123));
+}
+
+TEST(XlaOpUtilsTest, IsHloRematerialization) {
+  EXPECT_FALSE(IsHloRematerialization("%fusion.4848 = %reshape.19311.remat"));
+  EXPECT_TRUE(IsHloRematerialization("%convolution.5.remat"));
+  EXPECT_TRUE(IsHloRematerialization("%convolution.4.remat = %abc"));
+}
+
+TEST(XlaOpUtilsTest, IsFrameworkRematerialization) {
+  EXPECT_TRUE(IsFrameworkRematerialization(
+      "test_function_name/rematted_computation/dot_general"));
+  EXPECT_FALSE(
+      IsFrameworkRematerialization("test_function_name/fusion/dot_general"));
+  EXPECT_FALSE(IsFrameworkRematerialization(
+      "test_function_name_rematted_computation/reshape/dot_general"));
+}
+
+TEST(XlaOpUtilsTest, IsRematerialization) {
+  EXPECT_TRUE(IsRematerialization(
+      "%convolution.5.remat",
+      "test_function_name/rematted_computation/dot_general"));
+  EXPECT_TRUE(IsRematerialization(
+      "%convolution.5", "test_function_name/rematted_computation/dot_general"));
+  EXPECT_TRUE(IsRematerialization("%convolution.5.remat",
+                                  "test_function_name/reshape/dot_general"));
+  EXPECT_FALSE(IsRematerialization("%convolution.5",
+                                   "test_function_name/reshape/dot_general"));
+}
+
+TEST(XlaOpUtilsTest, IsHostOrSparseCoreV0Infeed) {
+  EXPECT_TRUE(IsHostOrSparseCoreV0Infeed(kHloInfeed));
+  EXPECT_TRUE(IsHostOrSparseCoreV0Infeed(kHloSparseCoreV0Infeed));
+  EXPECT_FALSE(IsHostOrSparseCoreV0Infeed(kHloSparseCoreV0InfeedWait));
+  EXPECT_FALSE(IsHostOrSparseCoreV0Infeed(kHloSparseCoreV0InfeedTransform));
+}
+
+TEST(XlaOpUtilsTest, TfOpFullname) {
+  EXPECT_EQ("", TfOpFullname("", ""));
+  EXPECT_EQ("MACHINA_MACHINA_XLA_Args:MACHINA_MACHINA_XLA_Args", TfOpFullname("", "MACHINA_MACHINA_XLA_Args"));
+  EXPECT_EQ("MACHINA_MACHINA_XLA_Retvals:op_type", TfOpFullname("op_type", "MACHINA_MACHINA_XLA_Retvals"));
+  EXPECT_EQ("op_name:op_type", TfOpFullname("op_type", "op_name"));
+}
+
+TEST(XlaOpUtilsTest, IsXlaArgsOrRetvals) {
+  EXPECT_TRUE(IsXlaArgsOrRetvals("MACHINA_MACHINA_XLA_Args"));
+  EXPECT_TRUE(IsXlaArgsOrRetvals("MACHINA_MACHINA_XLA_Retvals"));
+  EXPECT_FALSE(IsXlaArgsOrRetvals("op_type"));
+  EXPECT_FALSE(IsXlaArgsOrRetvals("op_name"));
+}
+
+}  // namespace
+}  // namespace profiler
+}  // namespace tsl

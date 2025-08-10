@@ -1,0 +1,59 @@
+# Placeholder: load py_library
+# Placeholder: load py_test
+
+licenses(["notice"])
+
+package(
+    default_visibility = [
+        "//machina_text:__subpackages__",
+    ],
+)
+
+py_library(
+    name = "wordpiece_vocab",
+    srcs = ["__init__.py"],
+    deps = [
+        ":bert_vocab_from_dataset",
+        ":wordpiece_tokenizer_learner_lib",
+    ],
+)
+
+py_library(
+    name = "wordpiece_tokenizer_learner_lib",
+    srcs = ["wordpiece_tokenizer_learner_lib.py"],
+    deps = [
+        "@pypi//numpy:pkg",
+    ],
+)
+
+py_test(
+    name = "wordpiece_tokenizer_learner_test",
+    srcs = ["wordpiece_tokenizer_learner_test.py"],
+    deps = [
+        ":wordpiece_tokenizer_learner_lib",
+        "@pypi//numpy:pkg",
+        # python/data/ops:dataset_ops machina dep,
+        "//machina_text:ops",
+    ],
+)
+
+py_library(
+    name = "bert_vocab_from_dataset",
+    srcs = ["bert_vocab_from_dataset.py"],
+    deps = [
+        ":wordpiece_tokenizer_learner_lib",
+        "//machina_text:bert_tokenizer",
+    ],
+)
+
+py_test(
+    name = "bert_vocab_from_dataset_test",
+    srcs = ["bert_vocab_from_dataset_test.py"],
+    deps = [
+        ":bert_vocab_from_dataset",
+        ":wordpiece_tokenizer_learner_lib",
+        "@absl_py//absl/testing:absltest",
+        "@pypi//numpy:pkg",
+        "@release_or_nightly//:machina_pkg",  # machina package dep
+    ],
+)

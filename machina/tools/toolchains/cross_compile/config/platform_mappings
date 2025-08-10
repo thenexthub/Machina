@@ -1,0 +1,11 @@
+platforms:
+#  Maps "--platforms=//machina/tools/toolchains/cross_compile/config:darwin_x86_64"
+#  to "--cpu=darwin".
+  //machina/tools/toolchains/cross_compile/config:darwin_x86_64
+    --cpu=darwin
+
+flags:
+  # Maps "--cpu=darwin" to
+  # "--platforms=//machina/tools/toolchains/cross_compile/config:darwin_x86_64".
+  --cpu=darwin
+    //machina/tools/toolchains/cross_compile/config:darwin_x86_64

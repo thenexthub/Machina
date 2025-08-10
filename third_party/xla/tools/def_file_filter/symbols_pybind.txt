@@ -1,0 +1,617 @@
+[//machina/python/util:cpp_python_util] # util tfe
+machina::swig::IsNested
+machina::swig::IsNestedOrComposite
+machina::swig::IsCompositeTensor
+machina::swig::IsTypeSpec
+machina::swig::IsNamedtuple
+machina::swig::IsMapping
+machina::swig::IsMutableMapping
+machina::swig::IsMappingView
+machina::swig::IsAttrs
+machina::swig::IsTensor
+machina::swig::IsResourceVariable
+machina::swig::IsVariable
+machina::swig::SameNamedtuples
+machina::swig::AssertSameStructure
+machina::swig::Flatten
+machina::swig::IsNestedForData
+machina::swig::FlattenForData
+machina::swig::AssertSameStructureForData
+machina::swig::RegisterPyObject
+machina::swig::RegisterType
+machina::swig::IsEagerTensorSlow
+machina::swig::GetRegisteredPyObject
+machina::swig::IsTensorProtocol
+machina::swig::IsCoreTypeValue
+
+[//machina/python/util:cpp_nest] # nest
+machina::FlattenDictItems
+
+[//machina/core/util:port] # util_port
+machina::IsGoogleCudaEnabled
+machina::IsBuiltWithROCm
+machina::IsBuiltWithNvcc
+machina::IsAArch32Available
+machina::IsAArch64Available
+machina::IsPowerPCAvailable
+machina::IsSystemZAvailable
+machina::IsX86Available
+machina::GpuSupportsHalfMatMulAndConv
+machina::IsMklEnabled
+
+[//machina/compiler/tf2xla:tf2xla_opset] # tf2xla_opset
+machina::GetRegisteredXlaOpsForDevice
+
+[//external/local_xla/xla/stream_executor:stream_executor_pimpl] # stat_summarizer
+stream_executor::StreamExecutor::EnablePeerAccessTo
+stream_executor::StreamExecutor::CanEnablePeerAccessTo
+
+[//machina/core/profiler/internal:print_model_analysis] # tfprof
+machina::tfprof::NewProfiler
+machina::tfprof::DeleteProfiler
+machina::tfprof::AddStep
+machina::tfprof::WriteProfile
+machina::tfprof::ProfilerFromFile
+machina::tfprof::Profile
+machina::tfprof::PrintModelAnalysis
+machina::tfprof::SerializeToString
+
+[//machina/core/grappler/graph_analyzer:graph_analyzer_tool] # graph_analyze
+machina::grappler::graph_analyzer::GraphAnalyzerTool
+
+[//external/local_xla/xla/tsl/python/lib/core:ml_dtypes_lib] # bfloat16, float8
+tsl::ml_dtypes::RegisterTypes
+tsl::ml_dtypes::GetBfloat16Dtype
+tsl::ml_dtypes::GetFloat8E4m3b11fnuzDtype
+tsl::ml_dtypes::GetFloat8E4m3fnDtype
+tsl::ml_dtypes::GetFloat8E5m2Dtype
+tsl::ml_dtypes::GetBfloat16TypeNum
+tsl::ml_dtypes::GetFloat8E4m3b11fnuzTypeNum
+tsl::ml_dtypes::GetFloat8E4m3fnTypeNum
+tsl::ml_dtypes::GetFloat8E5m2TypeNum
+
+[//machina/python:py_func_lib] # py_func
+machina::InitializePyTrampoline
+
+[//machina/core:framework_internal_impl] # op_def_registry, dtypes
+machina::BaseType
+machina::DataTypeString
+machina::DataTypeIsComplex
+machina::DataTypeIsFloating
+machina::DataTypeIsInteger
+machina::DataTypeIsQuantized
+machina::DataTypeIsUnsigned
+machina::DataTypeSize
+machina::OpRegistry::Global
+machina::OpRegistry::LookUpOpDef
+machina::RemoveNonDeprecationDescriptionsFromOpDef
+
+[//machina/core:lib_internal_impl]  # device_lib
+machina::Status::code
+machina::Status::error_message
+machina::Status::ok()
+
+[//machina/core/common_runtime:device_factory]  # device_lib, tfe, tf_session
+machina::DeviceFactory::AddDevices
+machina::DeviceFactory::ListAllPhysicalDevices
+machina::DeviceFactory::GetAnyDeviceDetails
+
+[//machina/core/common_runtime:session_options]  # device_lib, tfe, tf_session
+machina::SessionOptions::SessionOptions
+
+[//machina/core/common_runtime:quantize_training]  # quantize_training
+machina::DoQuantizeTrainingOnSerializedGraphDef
+
+[//machina/core/common_runtime:session_state]  # tf_session
+machina::SessionState::kTensorHandleResourceTypeName
+
+[//machina/core/data/service:dispatcher_client] # dispatcher_client
+machina::data::DataServiceDispatcherClient::EnsureInitialized
+machina::data::DataServiceDispatcherClient::GetDataServiceMetadata
+machina::data::DataServiceDispatcherClient::GetSnapshotSplit
+machina::data::DataServiceDispatcherClient::Initialize
+
+[//machina/core/data/service:grpc_util] # grpc_util
+machina::data::grpc_util::Retry
+
+[//machina/core/data/service:server_lib] # server_lib
+machina::data::GrpcDataServerBase::Join
+machina::data::GrpcDataServerBase::Start
+machina::data::GrpcDataServerBase::Stop
+machina::data::GrpcDataServerBase::BoundPort
+machina::data::DispatchGrpcDataServer::NumWorkers
+machina::data::DispatchGrpcDataServer::SnapshotStreams
+machina::data::WorkerGrpcDataServer::NumTasks
+machina::data::WorkerGrpcDataServer::SnapshotTaskProgresses
+machina::data::NewDispatchServer
+machina::data::NewWorkerServer
+
+[//machina/python:py_exception_registry] # py_exception_registry
+machina::PyExceptionRegistry::Init
+machina::PyExceptionRegistry::Lookup
+
+[//machina/python:kernel_registry] # kernel_registry
+machina::swig::TryFindKernelClass
+
+[//machina/lite/toco/python:toco_python_api] # toco_python_api
+toco::TocoConvert
+toco::MlirQuantizeModel
+toco::MlirSparsifyModel
+toco::RegisterCustomOpdefs
+toco::RetrieveCollectedErrors
+toco::FlatBufferFileToMlir
+
+[//machina/tools/graph_transforms:transform_graph_lib] # transform_graph
+machina::graph_transforms::TransformGraph
+machina::graph_transforms::ParseTransformParameters
+
+[//machina/c:checkpoint_reader] # py_checkpoint_reader
+machina::checkpoint::CheckpointReader
+machina::checkpoint::CheckpointReader::Init
+machina::checkpoint::CheckpointReader::DebugString
+machina::checkpoint::CheckpointReader::GetVariableToShapeMap
+machina::checkpoint::CheckpointReader::GetVariableToDataTypeMap
+machina::checkpoint::CheckpointReader::GetTensor
+machina::checkpoint::CheckpointReader::HasTensor
+
+[//machina/core/util/tensor_bundle] # py_checkpoint_reader
+machina::BundleReader::BundleReader
+machina::BundleReader::~BundleReader
+
+[//machina/python:ndarray_tensor] # py_checkpoint_reader
+machina::TensorToNdarray
+
+[//machina/python:safe_pyobject_ptr] # py_checkpoint_reader
+machina::detail::PyDecrefDeleter
+machina::make_safe
+
+[//machina/python/framework:python_op_gen] # python_op_gen
+machina::GetPythonWrappers
+
+[//machina/python/eager:pywrap_tfe_lib] # tfe
+machina::TFE_TensorHandleCache
+machina::TFE_TensorHandleCache::Clear
+EagerTensor_CheckExact
+EagerTensorFromHandle
+EagerTensor_Handle
+TFE_Py_ExecuteCancelable
+TFE_Py_RegisterExceptionClass
+TFE_Py_RegisterVSpace
+TFE_Py_RegisterFallbackExceptionClass
+TFE_Py_RegisterGradientFunction
+TFE_Py_RegisterJVPFunction
+TFE_GetPythonString
+TFE_Py_UID
+TFE_DeleteContextCapsule
+TFE_Py_InitEagerTensor
+TFE_Py_SetEagerTensorProfiler
+TFE_Py_TapeSetNew
+TFE_Py_TapeSetRemove
+TFE_Py_TapeSetAdd
+TFE_Py_TapeSetIsEmpty
+TFE_Py_TapeSetShouldRecordBackprop
+TFE_Py_TapeSetPossibleGradientTypes
+TFE_Py_TapeWatch
+TFE_Py_TapeSetDeleteTrace
+TFE_Py_TapeSetStopOnThread
+TFE_Py_TapeSetRestartOnThread
+TFE_Py_TapeSetIsStopped
+TFE_Py_TapeSetRecordOperation
+TFE_Py_TapeSetRecordOperationBackprop
+TFE_Py_TapeSetRecordOperationForwardprop
+TFE_Py_TapeVariableAccessed
+TFE_Py_TapeWatchVariable
+TFE_Py_TapeGradient
+TFE_Py_FastPathExecute_C
+TFE_Py_RecordGradient
+TFE_Py_TapeWatchedVariables
+TFE_Py_VariableWatcherNew
+TFE_Py_VariableWatcherRemove
+TFE_Py_VariableWatcherVariableAccessed
+TFE_Py_VariableWatcherWatchedVariables
+TFE_Py_ForwardAccumulatorNew
+TFE_Py_ForwardAccumulatorSetAdd
+TFE_Py_ForwardAccumulatorSetRemove
+TFE_Py_ForwardAccumulatorWatch
+TFE_Py_ForwardAccumulatorJVP
+TFE_Py_ForwardAccumulatorPushState
+TFE_Py_ForwardAccumulatorPopState
+TFE_Py_PackJVPs
+TFE_Py_TensorShapeSlice
+TFE_Py_TensorShapeOnDevice
+TFE_Py_EnableInteractivePythonLogging
+TFE_Py_SetEagerContext
+TFE_Py_SetCEagerContext
+machina::MakeEagerContextThreadLocalData
+machina::GetEagerContextThreadLocalData
+machina::DestroyEagerContextThreadLocalData
+machina::MaybeRaiseExceptionFromTFStatus
+machina::ConvertToEagerTensor
+
+[//machina/core/common_runtime/eager:eager_executor] # tfe
+machina::EagerExecutor::~EagerExecutor
+machina::EagerContext::WaitForAndCloseRemoteContexts
+
+[//machina/c:tf_status_helper] # tfe
+tsl::Set_TF_Status_from_Status
+
+[//machina/c:safe_ptr] # tfe
+machina::detail::TFBufferDeleter
+machina::detail::TFETensorHandleDeleter
+machina::detail::TFStatusDeleter
+machina::detail::TFTensorDeleter
+machina::make_safe
+
+[//machina/core/common_runtime/eager:context] # tfe
+machina::EagerContext::WaitForAndCloseRemoteContexts
+machina::SetCEagerContext
+machina::GetCEagerContext
+
+[//machina/compiler/mlir/python:mlir] # mlir
+machina::ExperimentalRunPassPipeline
+machina::ExperimentalConvertSavedModelV1ToMlirLite
+machina::ExperimentalConvertSavedModelV1ToMlir
+machina::ExperimentalConvertSavedModelToMlir
+machina::ExperimentalWriteBytecode
+machina::ExperimentalTFLiteToTosaBytecode
+machina::ImportGraphDef
+machina::ImportFunction
+
+[//machina/compiler/mlir/lite/python:converter_python_api] # converter_python_api
+tflite::Convert
+tflite::MlirQuantizeModel
+tflite::MlirSparsifyModel
+tflite::RegisterCustomOpdefs
+tflite::RetrieveCollectedErrors
+tflite::FlatBufferFileToMlir
+
+[//machina/core:op_gen_lib] # tf_session
+machina::ApiDefMap::~ApiDefMap
+
+[//machina/core/framework:attr_value_proto_cc_impl] # tf_text
+machina::AttrValue::`vftable'
+
+[//machina/core/framework:op_def_proto_cc_impl] # tf_text
+machina::OpDef::`vftable'
+
+[//machina/lite/kernels/shim:shape] # tf_text
+tflite::shim::Shape::AddDims
+tflite::shim::Shape::Compatible
+tflite::shim::Shape::Dim
+tflite::shim::Shape::ToString
+
+[//machina/lite/kernels/shim:tf_op_shim] # tf_text
+tflite::shim::FromAbslStatus
+tflite::shim::TfInitContext::GetAttr
+tflite::shim::TfInitContext::TfInitContext
+tflite::shim::TfInvokeContext::GetInput
+tflite::shim::TfInvokeContext::GetOutput
+tflite::shim::TfInvokeContext::NumInputs
+tflite::shim::TfInvokeContext::NumOutputs
+tflite::shim::TfInvokeContext::TfInvokeContext
+tflite::shim::TfShapeInferenceContext::GetAttr
+tflite::shim::TfShapeInferenceContext::GetInputShape
+tflite::shim::TfShapeInferenceContext::NumOutputs
+tflite::shim::TfShapeInferenceContext::SetInputShape
+tflite::shim::TfShapeInferenceContext::SetOutputShape
+tflite::shim::TfShapeInferenceContext::TfShapeInferenceContext
+
+[//machina/core/common_runtime:graph_constructor] # tf_session
+machina::ShapeRefiner::~ShapeRefiner
+
+[//machina/c:python_api] # tf_session
+machina::AddControlInput
+machina::SetAttr
+machina::ClearAttr
+machina::SetFullType
+machina::SetRequestedDevice
+machina::UpdateEdge
+machina::RemoveAllControlInputs
+machina::SetRequireShapeInferenceFns
+machina::ExtendSession
+machina::GetHandleShapeAndType
+machina::SetHandleShapeAndType
+machina::AddWhileInputHack
+machina::RecordMutation
+machina::Graph::IsControlEdge
+
+[//external/local_xla/xla/tsl/python/lib/core:numpy] # tf_session
+tsl::ImportNumpy
+_tsl_numpy_api
+
+[//machina/python/client:tf_session_helper] # tf_session
+machina::TF_NewSessionRef
+machina::TF_SessionMakeCallable
+machina::TF_SessionRunCallable
+machina::TF_SessionReleaseCallable
+machina::TF_Reset_wrapper
+machina::EqualGraphDefWrapper
+machina::EqualAttrValueWrapper
+machina::TF_GraphGetTensorShapeHelper
+machina::TF_SessionRun_wrapper
+machina::TF_SessionPRunSetup_wrapper
+machina::TF_SessionPRun_wrapper
+machina::GetOperationInputs
+machina::TF_OperationGetControlInputs_wrapper
+machina::TF_OperationGetControlOutputs_wrapper
+machina::TF_OperationOutputConsumers_wrapper
+machina::TF_GraphToFunction_wrapper
+machina::TF_GraphSetOutputHandleShapesAndTypes_wrapper
+machina::TF_CreatePlaceholders
+machina::TF_GraphSetTensorShape_wrapper
+machina::TF_ImportGraphDefResultsMissingUnusedInputMappings_wrapper
+machina::TF_TryEvaluateConstant_wrapper
+
+[//machina/core/grappler:grappler_item] # tf_item
+machina::grappler::GrapplerItem::MainOpsFanin
+machina::grappler::GrapplerItem::EnqueueOpsFanin
+
+[//machina/core/grappler/costs:graph_properties] # tf_item
+machina::grappler::GraphProperties::InferStatically
+machina::grappler::GraphProperties::GetOutputProperties
+
+[//machina/core/grappler:grappler_item_builder] # tf_item
+machina::grappler::GrapplerItemFromMetaGraphDef
+
+[//machina/core/grappler/utils:topological_sort] # tf_item
+machina::grappler::TopologicalSort
+
+[//machina/core/grappler/clusters:utils] # tf_cluster tf_optimizer
+machina::grappler::GetDeviceInfo
+
+[//machina/core/grappler/costs:utils] # tf_optimizer tf_cluster
+machina::grappler::CostGraphToOpPerformanceData
+machina::grappler::GetDeviceInfo
+
+[//machina/core/grappler/optimizers:meta_optimizer] # tf_optimizer
+machina::grappler::MetaOptimizer::MetaOptimizer
+machina::grappler::MetaOptimizer::Optimize
+machina::grappler::MetaOptimizer::PrintResult
+
+[//machina/core/grappler/clusters:cluster] # tf_cluster
+machina::grappler::Cluster::AllowSoftPlacement
+machina::grappler::Cluster::SetNumWarmupSteps
+machina::grappler::Cluster::DisableDetailedStats
+machina::grappler::Cluster::DetailedStatsEnabled
+
+[//machina/core/grappler/clusters:single_machine] # tf_cluster
+machina::grappler::SingleMachine::SingleMachine
+
+[//machina/core/grappler/costs:op_level_cost_estimator] # tf_cluster
+machina::grappler::OpLevelCostEstimator::OpLevelCostEstimator
+machina::grappler::OpLevelCostEstimator::PredictCosts
+machina::grappler::OpLevelCostEstimator::GetDeviceInfo
+
+[//machina/core/grappler/clusters:virtual_cluster] # tf_cluster
+machina::grappler::VirtualCluster::VirtualCluster
+
+[//machina/core/grappler/costs:graph_memory] # tf_cluster
+machina::grappler::GraphMemory::InferStatically
+machina::grappler::GraphMemory::InferDynamically
+
+[//machina/core/grappler/costs:measuring_cost_estimator] # tf_cluster
+machina::grappler::MeasuringCostEstimator::MeasuringCostEstimator
+machina::grappler::MeasuringCostEstimator::Initialize
+machina::grappler::MeasuringCostEstimator::PredictCosts
+
+[//machina/core/grappler:devices] # tf_cluster
+machina::grappler::GetNumAvailableGPUs
+machina::grappler::GetNumAvailableLogicalCPUCores
+
+[//machina/core/profiler/internal:traceme_recorder_impl] # profiler
+machina::profiler::TraceMeRecorder::Record
+
+[//external/local_tsl/tsl/profiler/lib:profiler_session_impl] # profiler
+tsl::ProfilerSession::Create
+tsl::ProfilerSession::CollectData
+tsl::ProfilerSession::Status
+tsl::ProfilerSession::~ProfilerSession
+
+[//external/local_xla/xla/tsl/profiler/rpc:profiler_server_impl] # profiler
+tsl::profiler::ProfilerServer::StartProfilerServer
+tsl::profiler::ProfilerServer::~ProfilerServer
+
+[//machina/core/profiler/rpc/client:profiler_client_impl] # profiler
+machina::profiler::ProfileGrpc
+machina::profiler::NewSessionGrpc
+machina::profiler::MonitorGrpc
+machina::profiler::RemoteProfilerSession::Create
+machina::profiler::RemoteProfilerSession::GetServiceAddress
+machina::profiler::RemoteProfilerSession::WaitForCompletion
+machina::profiler::RemoteProfilerSession::~RemoteProfilerSession
+
+[//external/local_xla/xla/tsl/profiler/rpc/client:profiler_client_impl] # profiler
+tsl::profiler::ProfileGrpc
+tsl::profiler::NewSessionGrpc
+tsl::profiler::MonitorGrpc
+tsl::profiler::RemoteProfilerSession::Create
+tsl::profiler::RemoteProfilerSession::GetServiceAddress
+tsl::profiler::RemoteProfilerSession::WaitForCompletion
+tsl::profiler::RemoteProfilerSession::~RemoteProfilerSession
+
+[//external/local_xla/xla/tsl/concurrency:async_value] # tfcompile
+tsl::AsyncValue::CreateTypeInfoAndReturnTypeIdImpl
+tsl::AsyncValue::TypeInfo
+tsl::internal::ConcreteAsyncValue
+tsl::DummyValueForErrorAsyncValue
+tsl::internal::ConcreteAsyncValue
+
+[//external/local_xla/xla:status_macros] # tfcompile
+xla::status_macros::MakeErrorStream::Impl::Impl
+xla::status_macros::MakeErrorStream::Impl::~Impl
+xla::status_macros::MakeErrorStream::Impl::GetStatus
+xla::status_macros::MakeErrorStream::CheckNotDone
+xla::status_macros::MakeErrorStream::add_ret_check_failure
+
+[//external/local_xla/xla/hlo/ir:hlo] # tfcompile
+xla::DfsHloVisitorBase::SetVisited
+xla::DfsHloVisitorBase<class xla::HloInstruction.*>::SetVisited
+xla::HloComputation::Accept
+xla::HloComputation::AcceptOrdered
+xla::HloComputation::CollectUnreachableRoots
+xla::HloInstruction::ToString
+xla::HloInstruction::Accept
+xla::HloInstruction::Visit
+
+[//machina/compiler/aot:tfcompile_lib] # tfcompile
+machina::tfcompile::Main
+
+[//machina/python:model_analyzer_lib] # model_analyzer
+machina::grappler::ModelAnalyzer::GenerateReport
+machina::grappler::ModelAnalyzer::ModelAnalyzer
+
+[//machina/core/grappler/costs:analytical_cost_estimator] # cost_analyzer
+machina::grappler::AnalyticalCostEstimator::Initialize
+machina::grappler::AnalyticalCostEstimator::PredictCosts
+
+[//machina/python:cost_analyzer_lib] # cost_analyzer
+machina::grappler::CostAnalyzer::CostAnalyzer
+machina::grappler::CostAnalyzer::GenerateReport
+
+[//machina/cc/saved_model:metrics_impl] # SavedModel and Checkpoint metrics
+machina::metrics::SavedModelWrite
+machina::metrics::SavedModelRead
+machina::metrics::SavedModelWriteApi
+machina::metrics::SavedModelReadApi
+machina::metrics::SavedModelWriteFingerprint
+machina::metrics::SavedModelReadFingerprint
+machina::metrics::SavedModelWritePath
+machina::metrics::SavedModelReadPath
+machina::metrics::SavedModelWritePathAndSingleprint
+machina::metrics::SavedModelReadPathAndSingleprint
+machina::metrics::MakeFingerprintJson
+machina::metrics::MakeSavedModelPathAndSingleprint
+machina::metrics::ParseSavedModelPathAndSingleprint
+machina::metrics::SavedModelFoundFingerprintOnLoad
+machina::metrics::CheckpointReadDuration
+machina::metrics::CheckpointWriteDuration
+machina::metrics::AsyncCheckpointWriteDuration
+machina::metrics::TrainingTimeSaved
+machina::metrics::CheckpointSize
+machina::metrics::ShardingCallbackDuration
+machina::metrics::NumCheckpointShardsWritten
+machina::metrics::ShardingCallbackDescription
+
+[//machina/cc/saved_model:fingerprinting_impl] # SavedModel Fingerprinting
+machina::saved_model::fingerprinting::CreateFingerprintDef
+machina::saved_model::fingerprinting::ReadSavedModelFingerprint
+machina::saved_model::fingerprinting::Singleprint
+
+
+[//machina/compiler/jit:flags] # tfe
+machina::IsXlaEnabled
+machina::GetMlirCommonFlags
+machina::GetXlaDeviceFlags
+machina::ResetJitCompilerFlags
+
+[//external/local_tsl/tsl/platform:tensor_float_32_utils] # tensor_float_32
+tsl::enable_tensor_float_32_execution
+tsl::tensor_float_32_execution_enabled
+
+[//machina/core/util:determinism] # determinism
+machina::OpDeterminismRequired
+machina::EnableOpDeterminism
+
+[//machina/compiler/jit:get_compiler_ir] # tfe
+machina::GetCompilerIr
+
+[//machina/core/common_runtime/eager:tensor_handle] # tfe
+machina::TensorHandle::Tensor
+
+[//machina/python:python_api_dispatcher] # python_api_dispatcher
+machina::py_dispatch::PythonAPIDispatcher
+machina::py_dispatch::PySignatureChecker
+machina::py_dispatch::PyTypeChecker::MatchType
+machina::py_dispatch::PyInstanceChecker::PyInstanceChecker
+machina::py_dispatch::PyInstanceChecker::Check
+machina::py_dispatch::PyInstanceChecker::cost
+machina::py_dispatch::PyInstanceChecker::DebugString
+machina::py_dispatch::PyListChecker::PyListChecker
+machina::py_dispatch::PyListChecker::Check
+machina::py_dispatch::PyListChecker::cost
+machina::py_dispatch::PyListChecker::DebugString
+machina::py_dispatch::PyUnionChecker::PyUnionChecker
+machina::py_dispatch::PyUnionChecker::Check
+machina::py_dispatch::PyUnionChecker::cost
+machina::py_dispatch::PyUnionChecker::DebugString
+machina::py_dispatch::RegisterDispatchableType
+
+[//machina/python:python_tensor_converter] # python_tensor_converter
+machina::PythonTensorConverter
+
+[//machina/python:python_api_info] # python_api_info
+machina::PythonAPIInfo
+
+[//machina/python:python_api_parameter_converter] # python_api_parameter_converter
+machina::ConvertPythonAPIParameters
+machina::CopyPythonAPITensorLists
+
+[//machina/core/platform:statusor] # tfe
+machina::internal_statusor::Helper::Crash
+
+[//machina/core/platform:cpu_feature_guard] # cpu_feature_guard
+machina::port::InfoAboutUnusedCPUFeatures
+
+[//machina/core/function:runtime_client_cc] # runtime_client
+machina::core::function::GlobalEagerContext
+machina::core::function::GlobalPythonEagerContext
+machina::core::function::Runtime::CreateFunction
+machina::core::function::Runtime::GetFunctionProto
+
+[//machina/core/config:flag_defs] # flags_api
+machina::flags::Global
+machina::flags::Flags::GetExportedFlag
+
+[//machina/core/config:flags] # flags_api
+machina::config::Flag::value
+machina::config::Flag::reset
+
+[//machina/python/framework:op_def_util_cc] # op_def_util
+machina::AttributeTypeFromName
+machina::AttrValueToPyObject
+machina::ConvertPyObjectToAttributeType
+machina::DataTypeToPyObject
+machina::Safe_PyObjectPtr
+
+[//machina/compiler/mlir/quantization/machina/python:quantize_model_cc] # quantization
+machina::quantization::QuantizeQatModel
+machina::quantization::QuantizePtqModelPreCalibration
+machina::quantization::QuantizePtqModelPostCalibration
+machina::quantization::QuantizeStaticRangePtq
+machina::quantization::QuantizeDynamicRangePtq
+machina::quantization::QuantizeWeightOnly
+
+[//machina/compiler/mlir/machina_to_stablehlo/python:pywrap_machina_to_stablehlo_lib_impl] # machina_to_stablehlo
+mlir::machina_to_stablehlo::pywrap::PywrapSavedModelToStablehlo
+mlir::machina_to_stablehlo::pywrap::PywrapTfModuleToStablehlo
+
+[//machina/dtensor/cc:dtensor_device_cc] # DTensor
+machina::dtensor::AllocateDTensorDevice
+machina::dtensor::AddMesh
+machina::dtensor::ExperimentalSetDefaultLayout
+machina::dtensor::ExperimentalClearDefaultLayout
+machina::dtensor::ExperimentalSetDefaultMesh
+machina::dtensor::ExperimentalClearDefaultMesh
+machina::dtensor::SetTPUCoreIDs
+machina::dtensor::ClearTPUCoreIDs
+machina::dtensor::TPUCoreIDsToLocations
+machina::dtensor::TPUCoreLocationsToIDs
+machina::dtensor::Pack
+machina::dtensor::Unpack
+machina::dtensor::FetchLayout
+machina::dtensor::IsDTensor
+machina::dtensor::SparsePack
+machina::dtensor::IsSparseDTensor
+machina::dtensor::GetStats
+machina::dtensor::SetIteratorElementLayouts
+
+[//machina/dtensor/cc:tensor_layout] # DTensor
+machina::dtensor::Mesh
+machina::dtensor::Layout
+machina::dtensor::Layout::LayoutType
+
+[//machina/core/tpu/kernels:sparse_core_layout] #SparseCoreLayoutStacker
+machina::tpu::SparseCoreLayoutStacker::AddTable
+machina::tpu::SparseCoreLayoutStacker::SparseCoreLayoutStacker
+machina::tpu::SparseCoreLayoutStacker::AddTable
+machina::tpu::SparseCoreLayoutStacker::GetLayouts

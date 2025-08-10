@@ -1,0 +1,165 @@
+path: "machina.MetaGraphDef"
+tf_proto {
+  descriptor {
+    name: "MetaGraphDef"
+    field {
+      name: "meta_info_def"
+      number: 1
+      label: LABEL_OPTIONAL
+      type: TYPE_MESSAGE
+      type_name: ".machina.MetaGraphDef.MetaInfoDef"
+    }
+    field {
+      name: "graph_def"
+      number: 2
+      label: LABEL_OPTIONAL
+      type: TYPE_MESSAGE
+      type_name: ".machina.GraphDef"
+    }
+    field {
+      name: "saver_def"
+      number: 3
+      label: LABEL_OPTIONAL
+      type: TYPE_MESSAGE
+      type_name: ".machina.SaverDef"
+    }
+    field {
+      name: "collection_def"
+      number: 4
+      label: LABEL_REPEATED
+      type: TYPE_MESSAGE
+      type_name: ".machina.MetaGraphDef.CollectionDefEntry"
+    }
+    field {
+      name: "signature_def"
+      number: 5
+      label: LABEL_REPEATED
+      type: TYPE_MESSAGE
+      type_name: ".machina.MetaGraphDef.SignatureDefEntry"
+    }
+    field {
+      name: "asset_file_def"
+      number: 6
+      label: LABEL_REPEATED
+      type: TYPE_MESSAGE
+      type_name: ".machina.AssetFileDef"
+    }
+    field {
+      name: "object_graph_def"
+      number: 7
+      label: LABEL_OPTIONAL
+      type: TYPE_MESSAGE
+      type_name: ".machina.SavedObjectGraph"
+    }
+    nested_type {
+      name: "MetaInfoDef"
+      field {
+        name: "meta_graph_version"
+        number: 1
+        label: LABEL_OPTIONAL
+        type: TYPE_STRING
+      }
+      field {
+        name: "stripped_op_list"
+        number: 2
+        label: LABEL_OPTIONAL
+        type: TYPE_MESSAGE
+        type_name: ".machina.OpList"
+      }
+      field {
+        name: "any_info"
+        number: 3
+        label: LABEL_OPTIONAL
+        type: TYPE_MESSAGE
+        type_name: ".google.protobuf.Any"
+      }
+      field {
+        name: "tags"
+        number: 4
+        label: LABEL_REPEATED
+        type: TYPE_STRING
+      }
+      field {
+        name: "machina_version"
+        number: 5
+        label: LABEL_OPTIONAL
+        type: TYPE_STRING
+      }
+      field {
+        name: "machina_git_version"
+        number: 6
+        label: LABEL_OPTIONAL
+        type: TYPE_STRING
+      }
+      field {
+        name: "stripped_default_attrs"
+        number: 7
+        label: LABEL_OPTIONAL
+        type: TYPE_BOOL
+      }
+      field {
+        name: "function_aliases"
+        number: 8
+        label: LABEL_REPEATED
+        type: TYPE_MESSAGE
+        type_name: ".machina.MetaGraphDef.MetaInfoDef.FunctionAliasesEntry"
+      }
+      nested_type {
+        name: "FunctionAliasesEntry"
+        field {
+          name: "key"
+          number: 1
+          label: LABEL_OPTIONAL
+          type: TYPE_STRING
+        }
+        field {
+          name: "value"
+          number: 2
+          label: LABEL_OPTIONAL
+          type: TYPE_STRING
+        }
+        options {
+          map_entry: true
+        }
+      }
+    }
+    nested_type {
+      name: "CollectionDefEntry"
+      field {
+        name: "key"
+        number: 1
+        label: LABEL_OPTIONAL
+        type: TYPE_STRING
+      }
+      field {
+        name: "value"
+        number: 2
+        label: LABEL_OPTIONAL
+        type: TYPE_MESSAGE
+        type_name: ".machina.CollectionDef"
+      }
+      options {
+        map_entry: true
+      }
+    }
+    nested_type {
+      name: "SignatureDefEntry"
+      field {
+        name: "key"
+        number: 1
+        label: LABEL_OPTIONAL
+        type: TYPE_STRING
+      }
+      field {
+        name: "value"
+        number: 2
+        label: LABEL_OPTIONAL
+        type: TYPE_MESSAGE
+        type_name: ".machina.SignatureDef"
+      }
+      options {
+        map_entry: true
+      }
+    }
+  }
+}

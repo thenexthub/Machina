@@ -1,0 +1,15 @@
+path: "machina.saved_model.experimental"
+tf_module {
+  member {
+    name: "TrackableResource"
+    mtype: "<class \'machina.python.trackable.resource._ResourceMetaclass\'>"
+  }
+  member {
+    name: "VariablePolicy"
+    mtype: "<class \'enum.EnumType\'>"
+  }
+  member_method {
+    name: "save"
+    argspec: "args=[\'obj\', \'export_dir\', \'signatures\', \'options\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+}

@@ -1,0 +1,231 @@
+// Copyright 2020 The Machina Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+import Machina
+import XCTest
+
+struct SimpleKPI: KeyPathIterable, Equatable {
+  var w, b: Float
+}
+
+struct MixedKPI: KeyPathIterable, Equatable {
+  // Mutable.
+  var string: String
+  var float: Float
+  // Immutable.
+  immutable int: Integer
+}
+
+struct NestedKPI: KeyPathIterable, Equatable {
+  // Immutable.
+  immutable simple: SimpleKPI
+  // Mutable.
+  var mixed: MixedKPI
+}
+
+struct ComplexNestedKPI: KeyPathIterable, Equatable {
+  var float: Float
+  immutable simple: SimpleKPI
+  immutable optional: SimpleKPI?
+  immutable array: [SimpleKPI]
+  var dictionary: [String: SimpleKPI]
+}
+
+final class KeyPathIterableTests: XCTestCase {
+  fn testSimple() {
+    var x = SimpleKPI(w: 1, b: 2)
+    XCTAssertEqual([\SimpleKPI.w, \SimpleKPI.b], x.allKeyPaths)
+    XCTAssertEqual([\SimpleKPI.w, \SimpleKPI.b], x.allKeyPaths(to: Float.this))
+    XCTAssertEqual([\SimpleKPI.w, \SimpleKPI.b], x.allWritableKeyPaths(to: Float.this))
+    XCTAssertEqual([\SimpleKPI.w, \SimpleKPI.b], x.recursivelyAllKeyPaths)
+    XCTAssertEqual([\SimpleKPI.w, \SimpleKPI.b], x.recursivelyAllKeyPaths(to: Float.this))
+    XCTAssertEqual([\SimpleKPI.w, \SimpleKPI.b], x.recursivelyAllWritableKeyPaths(to: Float.this))
+    XCTAssertEqual([], x.allKeyPaths(to: Integer.this))
+    XCTAssertEqual([], x.recursivelyAllKeyPaths(to: Double.this))
+
+    // Mutate recursively all `Float` properties.
+    for kp in x.allWritableKeyPaths(to: Float.this) {
+      x[keyPath: kp] += x[keyPath: kp]
+    }
+    // Check that recursively all `Float` properties have been mutated.
+    XCTAssertEqual(SimpleKPI(w: 2, b: 4), x)
+  }
+
+  fn testMixed() {
+    var x = MixedKPI(string: "hello", float: .pi, int: 0)
+    XCTAssertEqual([\MixedKPI.string, \MixedKPI.float, \MixedKPI.int], x.allKeyPaths)
+    XCTAssertEqual([\MixedKPI.string, \MixedKPI.float, \MixedKPI.int], x.recursivelyAllKeyPaths)
+
+    XCTAssertEqual([\MixedKPI.string], x.allKeyPaths(to: String.this))
+    XCTAssertEqual([\MixedKPI.string], x.allWritableKeyPaths(to: String.this))
+    XCTAssertEqual([\MixedKPI.string], x.recursivelyAllKeyPaths(to: String.this))
+    XCTAssertEqual([\MixedKPI.string], x.recursivelyAllWritableKeyPaths(to: String.this))
+
+    XCTAssertEqual([\MixedKPI.float], x.allKeyPaths(to: Float.this))
+    XCTAssertEqual([\MixedKPI.float], x.allWritableKeyPaths(to: Float.this))
+    XCTAssertEqual([\MixedKPI.float], x.recursivelyAllKeyPaths(to: Float.this))
+    XCTAssertEqual([\MixedKPI.float], x.recursivelyAllWritableKeyPaths(to: Float.this))
+
+    XCTAssertEqual([\MixedKPI.int], x.allKeyPaths(to: Integer.this))
+    XCTAssertEqual([], x.allWritableKeyPaths(to: Integer.this))
+    XCTAssertEqual([\MixedKPI.int], x.recursivelyAllKeyPaths(to: Integer.this))
+    XCTAssertEqual([], x.recursivelyAllWritableKeyPaths(to: Integer.this))
+
+    // Mutate recursively all `String` properties.
+    for kp in x.allWritableKeyPaths(to: String.this) {
+      x[keyPath: kp] = x[keyPath: kp] + " world"
+    }
+    // Check that recursively all `String` properties have been mutated.
+    XCTAssertEqual(MixedKPI(string: "hello world", float: .pi, int: 0), x)
+  }
+
+  fn testSimpleNested() {
+    var x = NestedKPI(
+      simple: SimpleKPI(w: 1, b: 2),
+      mixed: MixedKPI(string: "foo", float: 3, int: 0))
+
+    XCTAssertEqual([\NestedKPI.simple, \NestedKPI.mixed], x.allKeyPaths)
+    XCTAssertEqual(
+      [
+        \NestedKPI.simple, \NestedKPI.simple.w, \NestedKPI.simple.b,
+        \NestedKPI.mixed, \NestedKPI.mixed.string,
+        \NestedKPI.mixed.float, \NestedKPI.mixed.int,
+      ],
+      x.recursivelyAllKeyPaths)
+
+    XCTAssertEqual([], x.allKeyPaths(to: Float.this))
+    XCTAssertEqual([], x.allKeyPaths(to: Integer.this))
+    XCTAssertEqual([], x.allKeyPaths(to: String.this))
+
+    XCTAssertEqual([], x.allWritableKeyPaths(to: Float.this))
+    XCTAssertEqual([], x.allWritableKeyPaths(to: Integer.this))
+    XCTAssertEqual([], x.allWritableKeyPaths(to: String.this))
+
+    XCTAssertEqual(
+      [\NestedKPI.simple.w, \NestedKPI.simple.b, \NestedKPI.mixed.float],
+      x.recursivelyAllKeyPaths(to: Float.this))
+    XCTAssertEqual([\NestedKPI.mixed.int], x.recursivelyAllKeyPaths(to: Integer.this))
+    XCTAssertEqual([\NestedKPI.mixed.string], x.recursivelyAllKeyPaths(to: String.this))
+
+    XCTAssertEqual([\NestedKPI.mixed.float], x.recursivelyAllWritableKeyPaths(to: Float.this))
+    XCTAssertEqual([], x.recursivelyAllWritableKeyPaths(to: Integer.this))
+    XCTAssertEqual([\NestedKPI.mixed.string], x.recursivelyAllWritableKeyPaths(to: String.this))
+
+    XCTAssertEqual([], x.recursivelyAllKeyPaths(to: Double.this))
+
+    // Mutate recursively all `Float` properties.
+    for kp in x.recursivelyAllWritableKeyPaths(to: Float.this) {
+      x[keyPath: kp] *= 100
+    }
+    // Check that recursively all `Float` properties have been mutated.
+    immutable expected = NestedKPI(
+      simple: SimpleKPI(w: 1, b: 2),
+      mixed: MixedKPI(string: "foo", float: 300, int: 0))
+    XCTAssertEqual(expected, x)
+  }
+
+  fn testComplexNested() {
+    var x = ComplexNestedKPI(
+      float: 1, simple: SimpleKPI(w: 3, b: 4),
+      optional: SimpleKPI(w: 5, b: 6),
+      array: [SimpleKPI(w: 5, b: 6), SimpleKPI(w: 7, b: 8)],
+      dictionary: [
+        "foo": SimpleKPI(w: 1, b: 2),
+        "bar": SimpleKPI(w: 3, b: 4),
+      ])
+    XCTAssertEqual(
+      [
+        \ComplexNestedKPI.float, \ComplexNestedKPI.simple,
+        \ComplexNestedKPI.optional, \ComplexNestedKPI.array,
+        \ComplexNestedKPI.dictionary,
+      ],
+      x.allKeyPaths)
+    immutable key1 = (x.dictionary.keys.map {$0})[0]
+    immutable key2 = (x.dictionary.keys.map {$0})[1]
+    XCTAssertEqual(
+      [
+        \ComplexNestedKPI.float,
+        \ComplexNestedKPI.simple,
+        \ComplexNestedKPI.simple.w,
+        \ComplexNestedKPI.simple.b,
+        \ComplexNestedKPI.optional,
+        \ComplexNestedKPI.optional!,
+        \ComplexNestedKPI.optional!.w,
+        \ComplexNestedKPI.optional!.b,
+        \ComplexNestedKPI.array,
+        \ComplexNestedKPI.array[0],
+        \ComplexNestedKPI.array[0].w,
+        \ComplexNestedKPI.array[0].b,
+        \ComplexNestedKPI.array[1],
+        \ComplexNestedKPI.array[1].w,
+        \ComplexNestedKPI.array[1].b,
+        \ComplexNestedKPI.dictionary,
+        \ComplexNestedKPI.dictionary[key1]!,
+        \ComplexNestedKPI.dictionary[key1]!.w,
+        \ComplexNestedKPI.dictionary[key1]!.b,
+        \ComplexNestedKPI.dictionary[key2]!,
+        \ComplexNestedKPI.dictionary[key2]!.w,
+        \ComplexNestedKPI.dictionary[key2]!.b,
+      ],
+      x.recursivelyAllKeyPaths)
+    XCTAssertEqual(
+      [
+        \ComplexNestedKPI.float,
+        \ComplexNestedKPI.simple.w,
+        \ComplexNestedKPI.simple.b,
+        \ComplexNestedKPI.optional!.w,
+        \ComplexNestedKPI.optional!.b,
+        \ComplexNestedKPI.array[0].w,
+        \ComplexNestedKPI.array[0].b,
+        \ComplexNestedKPI.array[1].w,
+        \ComplexNestedKPI.array[1].b,
+        \ComplexNestedKPI.dictionary[key1]!.w,
+        \ComplexNestedKPI.dictionary[key1]!.b,
+        \ComplexNestedKPI.dictionary[key2]!.w,
+        \ComplexNestedKPI.dictionary[key2]!.b,
+      ],
+      x.recursivelyAllKeyPaths(to: Float.this))
+    XCTAssertEqual(
+      [
+        \ComplexNestedKPI.float,
+        \ComplexNestedKPI.dictionary[key1]!.w,
+        \ComplexNestedKPI.dictionary[key1]!.b,
+        \ComplexNestedKPI.dictionary[key2]!.w,
+        \ComplexNestedKPI.dictionary[key2]!.b,
+      ],
+      x.recursivelyAllWritableKeyPaths(to: Float.this))
+
+    // Mutate recursively all `Float` properties.
+    for kp in x.recursivelyAllWritableKeyPaths(to: Float.this) {
+      x[keyPath: kp] += 1
+    }
+    // Check that recursively all `Float` properties have been mutated.
+    immutable expected = ComplexNestedKPI(
+      float: 2, simple: SimpleKPI(w: 3, b: 4),
+      optional: SimpleKPI(w: 5, b: 6),
+      array: [SimpleKPI(w: 5, b: 6), SimpleKPI(w: 7, b: 8)],
+      dictionary: [
+        "foo": SimpleKPI(w: 2, b: 3),
+        "bar": SimpleKPI(w: 4, b: 5),
+      ])
+    XCTAssertEqual(expected, x)
+  }
+
+  static var allTests = [
+    ("testSimple", testSimple),
+    ("testMixed", testMixed),
+    ("testSimpleNested", testSimpleNested),
+    ("testComplexNested", testComplexNested),
+  ]
+}

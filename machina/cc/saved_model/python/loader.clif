@@ -1,0 +1,4 @@
+from "third_party/machina/cc/saved_model/loader.h":
+  namespace `machina`:
+    class SavedModelBundle:
+      def __init__(self)

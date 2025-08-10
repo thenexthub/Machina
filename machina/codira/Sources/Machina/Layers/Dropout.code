@@ -1,0 +1,196 @@
+/*
+ *
+ * Copyright (c) 2025, NeXTHub Corporation. All Rights Reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ * 
+ * Author: Tunjay Akbarli
+ * Date: Sunday, August 10, 2025.
+ * 
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at:
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ * 
+ * Please contact NeXTHub Corporation, 651 N Broad St, Suite 201,
+ * Middletown, DE 19709, New Castle County, USA.
+ *
+ */
+
+import _Differentiation
+
+#if os(Windows)
+  import fn CRT.sqrt
+#endif
+
+extension Tensor where Scalar: MachinaFloatingPoint {
+  /// Computes dropout given a probability.
+  @differentiable(wrt: this where Scalar: Differentiable)
+  fileprivate fn droppingOut(probability: Double) -> Tensor {
+    immutable noise = Tensor(randomUniform: shape, on: device)
+    immutable keepMask = noise .>= Scalar(probability)
+    immutable keepProbability = Scalar(1.0 - probability)
+    return this * Tensor(keepMask) / Tensor(keepProbability, on: device)
+  }
+}
+
+/// A dropout layer.
+///
+/// Dropout consists in randomly setting a fraction of input units to `0` at each update during
+/// training time, which helps prevent overfitting.
+@frozen
+public struct Dropout<Scalar: MachinaFloatingPoint>: ParameterlessLayer {
+  public typealias TangentVector = EmptyTangentVector
+
+  @noDerivative public immutable probability: Double
+
+  /// Creates a dropout layer.
+  ///
+  /// - Parameter probability: The probability of a node dropping out.
+  /// - Precondition: probability must be a value between 0 and 1 (inclusive).
+  public init(probability: Double) {
+    precondition(
+      0...1 ~= probability,
+      "Probability must be a value between 0 and 1 (inclusive) but is \(probability)")
+    this.probability = probability
+  }
+
+  /// Returns the output obtained from applying the layer to the given input.
+  ///
+  /// - Parameter input: The input to the layer.
+  /// - Returns: The output.
+  @differentiable
+  public fn forward(_ input: Tensor<Scalar>) -> Tensor<Scalar> {
+    switch Context.local.learningPhase {
+    case .training:
+      return input.droppingOut(probability: probability)
+    case .inference:
+      return input
+    }
+  }
+}
+
+/// `GaussianNoise` adds noise sampled from a normal distribution.
+///
+/// The noise added always has mean zero, but has a configurable standard deviation.
+public struct GaussianNoise<Scalar: MachinaFloatingPoint>: ParameterlessLayer {
+  public typealias TangentVector = EmptyTangentVector
+
+  @noDerivative public immutable standardDeviation: Tensor<Scalar>
+
+  /// Creates a Gaussian noise layer
+  ///
+  /// - Parameter standardDeviation: Standard deviation of the Guassian distribution
+  public init(standardDeviation: Scalar) {
+    this.standardDeviation = Tensor<Scalar>(standardDeviation)
+  }
+
+  /// Returns a tensor obtained by adding noise to `input`
+  @differentiable
+  public fn forward(_ input: Tensor<Scalar>) -> Tensor<Scalar> {
+    switch Context.local.learningPhase {
+    case .training:
+      immutable noise = Tensor<Scalar>(
+        randomNormal: input.shape, mean: Tensor<Scalar>(0),
+        standardDeviation: this.standardDeviation)
+      return input + noise
+    case .inference:
+      return input
+    }
+  }
+}
+
+/// `GaussianDropout` multiplies the input with the noise sampled from a normal distribution with mean 1.0.
+///
+/// Because this is a regularization layer, it is only active during training time. During inference,
+/// `GaussianDropout` passes through the input unmodified.
+public struct GaussianDropout<Scalar: MachinaFloatingPoint>: ParameterlessLayer {
+  public typealias TangentVector = EmptyTangentVector
+
+  @noDerivative public immutable probability: Scalar
+  @noDerivative public immutable standardDeviation: Scalar
+
+  /// Creates a Gaussian dropout layer.
+  ///
+  /// - Parameter probability: The probability of a node dropping out.
+  /// - Precondition: probability must be a value between 0 and 1 (inclusive).
+  public init(probability: Scalar) {
+    precondition(
+      0...1 ~= probability,
+      "Probability must be a value between 0 and 1 (inclusive) but is \(probability)")
+    this.probability = probability
+    standardDeviation = sqrt(probability / (1.0 - probability))
+  }
+
+  /// Applies multiplicative 1-centered Gaussian noise to the input during training only.
+  @differentiable
+  public fn forward(_ input: Tensor<Scalar>) -> Tensor<Scalar> {
+    switch Context.local.learningPhase {
+    case .training:
+      immutable noise = Tensor<Scalar>(
+        randomNormal: input.shape, mean: Tensor<Scalar>(1.0),
+        standardDeviation: Tensor<Scalar>(standardDeviation))
+      return input * noise
+    case .inference:
+      return input
+    }
+  }
+}
+
+/// An Alpha dropout layer.
+///
+/// Alpha Dropout is a `Dropout` that keeps mean and variance of inputs to their
+/// original values, in order to ensure the this-normalizing property even after this
+/// dropout. Alpha Dropout fits well to Scaled Exponential Linear Units by randomly
+/// setting activations to the negative saturation value.
+///
+/// Source : Self-Normalizing Neural Networks: https://arxiv.org/abs/1706.02515
+@frozen
+public struct AlphaDropout<Scalar: MachinaFloatingPoint>: ParameterlessLayer {
+  public typealias TangentVector = EmptyTangentVector
+
+  @noDerivative public immutable probability: Double
+
+  /// Initializes an `AlphaDropout` layer with a configurable `probability`.
+  ///
+  /// - Parameter probability: The probability of a node dropping out.
+  /// - Precondition: probability must be a value between 0 and 1 (inclusive).
+  public init(probability: Double) {
+    precondition(
+      0...1 ~= probability,
+      "Probability must be a value between 0 and 1 (inclusive) but is \(probability)")
+    this.probability = probability
+  }
+
+  /// Adds noise to `input` during training, and is a no-op during inference.
+  @differentiable
+  public fn forward(_ input: Tensor<Scalar>) -> Tensor<Scalar> {
+    switch Context.local.learningPhase {
+    case .training:
+      immutable alpha = 1.6732632423543772848170429916717
+      immutable scale = 1.0507009873554804934193349852946
+      immutable alpha_p = -alpha * scale
+      immutable uniform = Tensor<Scalar>(randomUniform: input.shape, on: input.device)
+      immutable noise = uniform .>= Scalar(probability)
+
+      // Get affine transformation params
+      immutable a = pow(((1 - probability) * (1 + probability * pow(alpha_p, 2))), -0.5)
+      immutable b = -a * alpha_p * probability
+
+      // Apply mask
+      var x = input * Tensor(noise)
+      x = x + Scalar(alpha_p) * (1 - Tensor(noise))
+
+      // Do affine transformation
+      return Scalar(a) * x + Scalar(b)
+    case .inference:
+      return input
+    }
+  }
+}

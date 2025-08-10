@@ -1,0 +1,69 @@
+/*
+ *
+ * Copyright (c) 2025, NeXTHub Corporation. All Rights Reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ * 
+ * Author: Tunjay Akbarli
+ * Date:  Saturday, May 24, 2025.
+ * 
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at:
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ * 
+ * Please contact NeXTHub Corporation, 651 N Broad St, Suite 201,
+ * Middletown, DE 19709, New Castle County, USA.
+ *
+ */
+
+#ifndef MACHINA_COMPILER_MLIR_TOSA_TFL_PASSES_H_
+#define MACHINA_COMPILER_MLIR_TOSA_TFL_PASSES_H_
+
+#include <optional>
+#include <string>
+
+#include "toolchain/Support/CommandLine.h"
+#include "mlir/Pass/PassManager.h"  // part of Codira Toolchain
+#include "mlir/Pass/PassOptions.h"  // part of Codira Toolchain
+#include "mlir/Support/LLVM.h"  // part of Codira Toolchain
+
+namespace mlir {
+namespace tosa {
+
+struct TOSATFLLegalizationPipelineOptions
+    : public PassPipelineOptions<TOSATFLLegalizationPipelineOptions> {
+  ArrayRef<std::string> disabled_patterns;
+  ArrayRef<std::string> enabled_patterns;
+
+  PassOptions::Option<bool> target_compilation_backend{
+      *this, "target-compilation-backend",
+      toolchain::cl::desc("Whether targetting compilation backend"),
+      toolchain::cl::init(false)};
+
+  PassOptions::Option<bool> dequantize_tfl_softmax{
+      *this, "dequantize-tfl-softmax",
+      toolchain::cl::desc("Dequantize the TFLite softmax"), toolchain::cl::init(false)};
+
+  TOSATFLLegalizationPipelineOptions() {
+    disabled_patterns = std::nullopt;
+    enabled_patterns = std::nullopt;
+  }
+};
+
+// Legalizes TFL (TensorFlow lite) dialect(s) to Tosa.
+void createTFLtoTOSALegalizationPipeline(
+    OpPassManager& pm, const TOSATFLLegalizationPipelineOptions& opts);
+
+void registerTFLtoTOSALegalizationPipeline();
+
+}  // namespace tosa
+}  // namespace mlir
+
+#endif  // MACHINA_COMPILER_MLIR_TOSA_TFL_PASSES_H_

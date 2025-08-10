@@ -1,0 +1,58 @@
+/*
+ *
+ * Copyright (c) 2025, NeXTHub Corporation. All Rights Reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ * 
+ * Author: Tunjay Akbarli
+ * Date:  Sunday, June 15, 2025.
+ * 
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at:
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ * 
+ * Please contact NeXTHub Corporation, 651 N Broad St, Suite 201,
+ * Middletown, DE 19709, New Castle County, USA.
+ *
+ */
+
+#include "machina/lite/kernels/internal/reference/floor.h"
+
+#include "machina/lite/c/common.h"
+#include "machina/lite/kernels/internal/tensor_ctypes.h"
+#include "machina/lite/micro/kernels/kernel_util.h"
+
+namespace tflite {
+
+namespace {
+
+constexpr int kInputTensor = 0;
+constexpr int kOutputTensor = 0;
+
+TfLiteStatus FloorEval(TfLiteContext* context, TfLiteNode* node) {
+  const TfLiteEvalTensor* input =
+      tflite::micro::GetEvalInput(context, node, kInputTensor);
+  TF_LITE_ENSURE_TYPES_EQ(context, input->type, kTfLiteFloat32);
+  TfLiteEvalTensor* output =
+      tflite::micro::GetEvalOutput(context, node, kOutputTensor);
+  reference_ops::Floor(tflite::micro::GetTensorShape(input),
+                       tflite::micro::GetTensorData<float>(input),
+                       tflite::micro::GetTensorShape(output),
+                       tflite::micro::GetTensorData<float>(output));
+  return kTfLiteOk;
+}
+
+}  // namespace
+
+TFLMRegistration Register_FLOOR() {
+  return tflite::micro::RegisterOp(nullptr, nullptr, FloorEval);
+}
+
+}  // namespace tflite

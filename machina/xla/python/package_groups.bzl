@@ -1,0 +1,7 @@
+"""XLA Python package_group definitions."""
+
+visibility(["//xla/python/..."])
+
+MACHINA_XLAPYTHON_MACHINA_XLACLIENT_USERS = []
+MACHINA_XLAPYTHON_MACHINA_XLAEXTENSION_USERS = []
+MACHINA_XLAPYTHON_PROFILER_USERS = []

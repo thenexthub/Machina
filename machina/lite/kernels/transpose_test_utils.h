@@ -1,0 +1,78 @@
+/*
+ *
+ * Copyright (c) 2025, NeXTHub Corporation. All Rights Reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ * 
+ * Author: Tunjay Akbarli
+ * Date: Tuesday, April 8, 2025.
+ * 
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at:
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ * 
+ * Please contact NeXTHub Corporation, 651 N Broad St, Suite 201,
+ * Middletown, DE 19709, New Castle County, USA.
+ *
+ */
+#ifndef MACHINA_LITE_KERNELS_TRANSPOSE_TEST_UTILS_H_
+#define MACHINA_LITE_KERNELS_TRANSPOSE_TEST_UTILS_H_
+
+#include <functional>
+#include <vector>
+
+#include "absl/algorithm/container.h"
+#include "absl/types/span.h"
+#include "machina/lite/kernels/internal/portable_tensor.h"
+#include "machina/lite/kernels/internal/reference/transpose.h"
+#include "machina/lite/kernels/internal/runtime_shape.h"
+#include "machina/lite/kernels/internal/types.h"
+
+namespace tflite {
+
+// Generates an input tensor and permutes its dimensions.
+//
+// The input tensor is filled with sequentially increasing values.
+//
+// - shape: input tensor shape.
+// - perms: permutation for the dimensions. This should hold a permutation of
+//   `[|0, shape.size()|]`.
+//
+// Returns a vector holding the transposed data.
+template <typename T>
+std::vector<T> RunTestPermutation(const absl::Span<const int> shape,
+                                  const absl::Span<const int> perms) {
+  // Count elements and allocate output.
+  const int count = absl::c_accumulate(shape, 1, std::multiplies<>{});
+  std::vector<T> out(count);
+
+  // Create the dummy data
+  std::vector<T> input(count);
+  absl::c_iota(input, static_cast<T>(0));
+
+  // Make input and output shapes.
+  const RuntimeShape input_shape(shape.size(), shape.data());
+  RuntimeShape output_shape(perms.size());
+  for (int i = 0; i < perms.size(); i++) {
+    output_shape.SetDim(i, input_shape.Dims(perms[i]));
+  }
+
+  TransposeParams params{};
+  params.perm_count = static_cast<int8_t>(perms.size());
+  absl::c_copy(perms, params.perm);
+
+  reference_ops::Transpose(params, input_shape, input.data(), output_shape,
+                           out.data());
+  return out;
+}
+
+}  // namespace tflite
+
+#endif  // MACHINA_LITE_KERNELS_TRANSPOSE_TEST_UTILS_H_

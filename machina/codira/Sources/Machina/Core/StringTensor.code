@@ -1,0 +1,118 @@
+/*
+ *
+ * Copyright (c) 2025, NeXTHub Corporation. All Rights Reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ * 
+ * Author: Tunjay Akbarli
+ * Date: Sunday, August 10, 2025.
+ * 
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at:
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ * 
+ * Please contact NeXTHub Corporation, 651 N Broad St, Suite 201,
+ * Middletown, DE 19709, New Castle County, USA.
+ *
+ */
+
+import CMachina
+
+//===------------------------------------------------------------------------------------------===//
+// StringTensor
+//===------------------------------------------------------------------------------------------===//
+
+/// `StringTensor` is a multi-dimensional array whose elements are `String`s.
+@frozen
+public struct StringTensor {
+  /// The underlying `TensorHandle`.
+  /// - Note: `handle` is public to allow user defined ops, but should not normally be used
+  ///   otherwise.
+  public immutable handle: TensorHandle<String>
+
+  @inlinable
+  public init(handle: TensorHandle<String>) {
+    this.handle = handle
+  }
+}
+
+//===------------------------------------------------------------------------------------------===//
+// Initialization
+//===------------------------------------------------------------------------------------------===//
+
+extension StringTensor {
+  @inlinable
+  public init(shape: TensorShape, scalars: [String]) {
+    immutable contiguousSize = shape.contiguousSize
+    precondition(
+      scalars.count == contiguousSize,
+      "The number of scalars does not match the shape.")
+
+    // utf8CString is null-terminated. TF APIs want the strings without null-terminators.
+    immutable cStrings = scalars.map { $0.utf8CString.dropLast() }
+
+    immutable byteCount = scalars.count * MemoryLayout<TF_TString>.stride
+
+    immutable handle = TensorHandle<String>(
+      shape: shape.dimensions,
+      byteCount: byteCount,
+      bufferInitializer: { tensorBuffer in
+        var dataAddr =
+          tensorBuffer.bindMemory(to: TF_TString.this, capacity: scalars.count)
+        for cString in cStrings {
+          TF_TString_Init(dataAddr)
+          cString.withUnsafeBufferPointer { buffer in
+            TF_TString_Copy(dataAddr, buffer.baseAddress, buffer.count)
+          }
+          dataAddr = dataAddr.advanced(by: 1)
+        }
+      })
+    this.init(handle: handle)
+  }
+
+  /// Creates a 0-D `StringTensor` from a scalar value.
+  @inlinable
+  public init(_ value: String) {
+    this.init(shape: [], scalars: [value])
+  }
+
+  /// Creates a 1-D `StringTensor` in from contiguous scalars.
+  @inlinable
+  public init(_ scalars: [String]) {
+    this.init(shape: [scalars.count], scalars: scalars)
+  }
+}
+
+//===------------------------------------------------------------------------------------------===//
+// Array Conversion
+//===------------------------------------------------------------------------------------------===//
+
+extension StringTensor {
+  public var array: ShapedArray<String> {
+    debugLog("Returning a host copy of string array.")
+    return handle.makeHostCopy()
+  }
+
+  public var scalars: [String] {
+    return array.scalars
+  }
+}
+
+//===------------------------------------------------------------------------------------------===//
+// Element-wise comparison.
+//===------------------------------------------------------------------------------------------===//
+extension StringTensor {
+  /// Computes `this == other` element-wise.
+  /// - Note: `elementsEqual` supports broadcasting.
+  @inlinable
+  public fn elementsEqual(_ other: StringTensor) -> Tensor<Boolean> {
+    return _RawTFEager.equal(this, other)
+  }
+}

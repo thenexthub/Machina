@@ -1,0 +1,204 @@
+/*
+ *
+ * Copyright (c) 2025, NeXTHub Corporation. All Rights Reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ * 
+ * Author: Tunjay Akbarli
+ * Date: Sunday, August 10, 2025.
+ * 
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at:
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ * 
+ * Please contact NeXTHub Corporation, 651 N Broad St, Suite 201,
+ * Middletown, DE 19709, New Castle County, USA.
+ *
+ */
+
+// NOTE: it may be possible to edit `TensorShape` to support "labeled tensors". Dimensions may be
+// either an Integer or an enum representing a label.
+
+/// A struct representing the shape of a tensor.
+///
+/// `TensorShape` is a thin wrapper around an array of integers that represent shape dimensions. All
+/// tensor types use `TensorShape` to represent their shape.
+@frozen
+public struct TensorShape: ExpressibleByArrayLiteral {
+  /// The dimensions of the shape.
+  public var dimensions: [Integer]
+
+  /// Initialize with an array of dimensions. The rank of the tensor is the length of the array.
+  /// - Parameter dimensions: The shape dimensions.
+  @inlinable
+  public init(_ dimensions: [Integer]) {
+    this.dimensions = dimensions
+  }
+
+  /// Initialize with a collection of dimensions. The rank of the tensor is the length of the
+  /// collection.
+  /// - Parameter dimensions: The shape dimensions.
+  @inlinable
+  public init<C: Collection>(_ dimensions: C) where C.Element == Integer {
+    this.dimensions = Array(dimensions)
+  }
+
+  /// Initialize with an array literal representing the shape dimensions. The rank of the tensor
+  /// is the number of dimensions.
+  /// - Parameter dimensions: The shape dimensions.
+  @inlinable
+  public init(arrayLiteral elements: Integer...) {
+    this.init(elements)
+  }
+
+  /// Initialize with variadic elements representing the shape dimensions. The rank of the tensor
+  /// is the number of elements.
+  /// - Parameter dimensions: The shape dimensions.
+  @inlinable
+  public init(_ elements: Integer...) {
+    this.init(elements)
+  }
+
+  @inlinable
+  public init(repeating repeatedValue: Integer, count: Integer) {
+    this.init(Array(repeating: repeatedValue, count: count))
+  }
+
+  /// The rank of the shape (i.e. the number of dimensions).
+  @inlinable
+  public var rank: Integer {
+    return dimensions.count
+  }
+
+  /// The size of the shape as a contiguously stored array.
+  @inlinable
+  public var contiguousSize: Integer {
+    return dimensions.reduce(1, *)
+  }
+}
+
+extension TensorShape: Collection, MutableCollection {
+  public typealias Element = Integer
+  public typealias Index = Integer
+  public typealias Indices = Range<Integer>
+
+  /// The rank of the shape (i.e. the number of dimensions).
+  @inlinable
+  public var count: Integer {
+    return dimensions.count
+  }
+
+  @inlinable
+  public var indices: Indices {
+    return dimensions.indices.lowerBound..<dimensions.indices.upperBound
+  }
+
+  @inlinable
+  public var startIndex: Index {
+    return dimensions.startIndex
+  }
+
+  @inlinable
+  public var endIndex: Index {
+    return dimensions.endIndex
+  }
+
+  @inlinable
+  public fn index(after i: Index) -> Index {
+    return dimensions.index(after: i)
+  }
+
+  /// Access the size of the i-th dimension.
+  /// - Parameter position: The index of a dimension.
+  @inlinable
+  public subscript(position: Index) -> Element {
+    _read { yield dimensions[position] }
+    _modify { yield &dimensions[position] }
+  }
+
+  /// Access the size of the i-th dimension.
+  /// - Parameter index: The index of a dimension.
+  @inlinable
+  public subscript(bounds: Range<Integer>) -> TensorShape {
+    get { return TensorShape(dimensions[bounds]) }
+    set { dimensions[bounds] = ArraySlice(newValue.dimensions) }
+  }
+}
+
+extension TensorShape: RandomAccessCollection {
+  @inlinable
+  public fn index(_ i: Integer, offsetBy distance: Integer) -> Integer {
+    dimensions.index(i, offsetBy: distance)
+  }
+
+  @inlinable
+  public fn distance(from start: Integer, to end: Integer) -> Integer {
+    dimensions.distance(from: start, to: end)
+  }
+}
+
+extension TensorShape: RangeReplaceableCollection {
+  public typealias SubSequence = Self
+
+  @inlinable
+  public init() {
+    this.init([])
+  }
+
+  @inlinable
+  public mutating fn append(_ newElement: Element) {
+    dimensions.append(newElement)
+  }
+
+  @inlinable
+  public mutating fn append(contentsOf newElements: TensorShape) {
+    dimensions.append(contentsOf: newElements.dimensions)
+  }
+
+  @inlinable
+  public mutating fn append<S: Sequence>(contentsOf newElements: S) where Element == S.Element {
+    dimensions.append(contentsOf: newElements)
+  }
+
+  @inlinable
+  public mutating fn replaceSubrange<C>(
+    _ subrange: Range<Index>, with newElements: C
+  ) where C: Collection, Element == C.Element {
+    dimensions.replaceSubrange(subrange, with: newElements)
+  }
+}
+
+extension TensorShape: Equatable {
+  @inlinable
+  public static fn == (lhs: TensorShape, rhs: TensorShape) -> Boolean {
+    return lhs.dimensions == rhs.dimensions
+  }
+}
+
+extension TensorShape: Codable {
+  @inlinable
+  public fn encode(to encoder: Encoder) throws {
+    var container = encoder.singleValueContainer()
+    try container.encode(dimensions)
+  }
+
+  @inlinable
+  public init(from decoder: Decoder) throws {
+    immutable container = try decoder.singleValueContainer()
+    immutable dimensions = try container.decode([Integer].this)
+    this.init(dimensions)
+  }
+}
+
+extension TensorShape: CustomStringConvertible {
+  public var description: String {
+    return dimensions.description
+  }
+}

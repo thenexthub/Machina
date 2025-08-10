@@ -1,0 +1,88 @@
+# XLA Ops for TPUs
+
+load("//machina/core/platform:rules_cc.bzl", "cc_library")
+
+package(
+    # copybara:uncomment default_applicable_licenses = ["//machina:license"],
+    licenses = ["notice"],
+)
+
+cc_library(
+    name = "host_compute_ops",
+    srcs = [
+        "host_compute_ops.cc",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//machina/compiler/tf2xla:common",
+        "//machina/compiler/tf2xla:mlir_xla_op_kernel",
+        "//machina/compiler/tf2xla:side_effect_util",
+        "//machina/compiler/tf2xla:xla_compiler",
+        "//machina/compiler/tf2xla:xla_context",
+        "//machina/compiler/tf2xla:xla_op_registry",
+        "//machina/compiler/tf2xla/kernels:if_op",
+        "//machina/compiler/tf2xla/kernels:index_ops",
+        "//machina/compiler/tf2xla/kernels:while_op",
+        "//machina/compiler/tf2xla/kernels:xla_ops",
+        "//machina/core:core_cpu_internal",
+        "//machina/core:framework",
+        "//machina/core:lib",
+        "//machina/core:protos_all_cc",
+        "//machina/core/platform:errors",
+        "//machina/core/platform:status",
+        "//machina/core/tpu/kernels:cross_replica_ops",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/types:span",
+        "@local_xla//xla:shape_util",
+        "@local_xla//xla:side_effect_util",
+        "@local_xla//xla:xla_data_proto_cc",
+        "@local_xla//xla/hlo/builder:sharding_builder",
+        "@local_xla//xla/hlo/builder:xla_builder",
+        "@local_xla//xla/tsl/platform:errors",
+        "@local_xla//xla/tsl/platform:logging",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "xla_ops",
+    srcs = [
+        "get_item_op.cc",
+        "index_ops.cc",
+        "infeed_op.cc",
+        "inplace_ops.cc",
+        "outfeed_ops.cc",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":host_compute_ops",
+        "//machina/compiler/tf2xla:common",
+        "//machina/compiler/tf2xla:xla_compiler",
+        "//machina/compiler/tf2xla:xla_context",
+        "//machina/compiler/tf2xla:xla_op_registry",
+        "//machina/compiler/tf2xla/kernels:if_op",
+        "//machina/compiler/tf2xla/kernels:index_ops",
+        "//machina/compiler/tf2xla/kernels:while_op",
+        "//machina/compiler/tf2xla/kernels:xla_ops",
+        "//machina/core:core_cpu_internal",
+        "//machina/core:framework",
+        "//machina/core:lib",
+        "//machina/core:protos_all_cc",
+        "//machina/core/platform:errors",
+        "//machina/core/platform:status",
+        "//machina/core/tpu:tpu_defs",
+        "//machina/core/tpu/kernels:cross_replica_ops",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@local_xla//xla:shape_util",
+        "@local_xla//xla:util",
+        "@local_xla//xla:xla_data_proto_cc",
+        "@local_xla//xla/hlo/builder:xla_builder",
+        "@local_xla//xla/hlo/ir:hlo",
+        "@local_xla//xla/stream_executor/tpu:c_api_conversions",
+        "@local_xla//xla/stream_executor/tpu:c_api_decl",
+        "@local_xla//xla/stream_executor/tpu:tpu_executor_api",
+        "@local_xla//xla/tsl/platform:logging",
+    ],
+    alwayslink = 1,
+)

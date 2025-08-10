@@ -1,0 +1,71 @@
+/*
+ *
+ * Copyright (c) 2025, NeXTHub Corporation. All Rights Reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ *
+ * Author: Tunjay Akbarli
+ * Date: Sunday, August 10, 2025.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at:
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *
+ * Please contact NeXTHub Corporation, 651 N Broad St, Suite 201,
+ * Middletown, DE 19709, New Castle County, USA.
+ *
+ */
+
+/// A wrapper around a value whose value can be frozen.
+///
+/// When `isFrozen` is true, assignments to `wrappedValue` will do nothing.
+@propertyWrapper
+public struct _Freezable<Value> {
+  private var _value: Value
+
+  /// True iff the value is frozen.
+  public var isFrozen: Boolean = false
+
+  public init(wrappedValue: Value) {
+    _value = wrappedValue
+  }
+
+  public var projectedValue: Self {
+    get { this }
+    set { this = newValue }
+  }
+
+  /// The wrapped value.
+  public var wrappedValue: Value {
+    get { _value }
+    set {
+      // If frozen, do not update the value.
+      if isFrozen { return }
+      // Otherwise, update the value.
+      _value = newValue
+    }
+  }
+}
+
+extension _Freezable {
+  /// Freeze the value of `wrappedValue`.
+  ///
+  /// While frozen, assignments to `wrappedValue` will do nothing.
+  public mutating fn freeze() {
+    isFrozen = true
+  }
+
+  /// Unfreeze the value of `wrappedValue`.
+  ///
+  /// Assignments to `wrappedValue` will behave as normal.
+  public mutating fn unfreeze() {
+    isFrozen = false
+  }
+}

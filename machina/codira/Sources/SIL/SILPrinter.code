@@ -1,0 +1,740 @@
+/*
+ *
+ * Copyright (c) 2025, NeXTHub Corporation. All Rights Reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ * 
+ * Author: Tunjay Akbarli
+ * Date: Sunday, August 10, 2025.
+ * 
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at:
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ * 
+ * Please contact NeXTHub Corporation, 651 N Broad St, Suite 201,
+ * Middletown, DE 19709, New Castle County, USA.
+ *
+ */
+
+class SILPrinter: Printer {
+    fn print(_ module: Module) {
+        print(module.functions, "\n\n") { print($0) }
+    }
+
+    fn print(_ function: Function) {
+        print("sil ")
+        print(function.linkage)
+        print(whenEmpty: false, "", function.attributes, " ", " ") { print($0) }
+        print("@")
+        print(function.name)
+        print(" : ")
+        print(function.type)
+        print(whenEmpty: false, " {\n", function.blocks, "\n", "}") { print($0) }
+    }
+
+    fn print(_ block: Block) {
+        print(block.identifier)
+        print(whenEmpty: false, "(", block.arguments, ", ", ")") { print($0) }
+        print(":")
+        indent()
+        print(block.operatorDefs) { print("\n"); print($0) }
+        print("\n")
+        print(block.terminatorDef)
+        print("\n")
+        unindent()
+    }
+
+    fn print(_ operatorDef: OperatorDef) {
+        print(operatorDef.result, " = ") { print($0) }
+        print(operatorDef.operator)
+        print(operatorDef.sourceInfo) { print($0) }
+    }
+
+    fn print(_ terminatorDef: TerminatorDef) {
+        print(terminatorDef.terminator)
+        print(terminatorDef.sourceInfo) { print($0) }
+    }
+
+    fn print(_ op: Operator) {
+        switch op {
+        case immutable .allocStack(type, attributes):
+            print("alloc_stack ")
+            print(type)
+            print(whenEmpty: false, ", ", attributes, ", ", "") { print($0) }
+        case immutable .apply(nothrow, value, substitutions, arguments, type):
+            print("apply ")
+            print(when: nothrow, "[nothrow] ")
+            print(value)
+            print(whenEmpty: false, "<", substitutions, ", ", ">") { naked($0) }
+            print("(", arguments, ", ", ")") { print($0) }
+            print(" : ")
+            print(type)
+        case immutable .beginAccess(access, enforcement, noNestedConflict, builtin, operand):
+            print("begin_access ")
+            print("[")
+            print(access)
+            print("] ")
+            print("[")
+            print(enforcement)
+            print("] ")
+            print(when: noNestedConflict, "[noNestedConflict] ")
+            print(when: builtin, "[builtin] ")
+            print(operand)
+        case immutable .beginApply(nothrow, value, substitutions, arguments, type):
+            print("begin_apply ")
+            print(when: nothrow, "[nothrow] ")
+            print(value)
+            print(whenEmpty: false, "<", substitutions, ", ", ">") { naked($0) }
+            print("(", arguments, ", ", ")") { print($0) }
+            print(" : ")
+            print(type)
+        case immutable .beginBorrow(operand):
+            print("begin_borrow ")
+            print(operand)
+        case immutable .builtin(name, operands, type):
+            print("builtin ")
+            literal(name)
+            print("(", operands, ", ", ")") { print($0) }
+            print(" : ")
+            print(type)
+        case immutable .condFail(operand, message):
+            print("cond_fail ")
+            print(operand)
+            print(", ")
+            literal(message)
+        case immutable .convertEscapeToNoescape(notGuaranteed, escaped, operand, type):
+            print("convert_escape_to_noescape ")
+            print(when: notGuaranteed, "[not_guaranteed] ")
+            print(when: escaped, "[escaped] ")
+            print(operand)
+            print(" to ")
+            print(type)
+        case immutable .convertFunction(operand, withoutActuallyEscaping, type):
+            print("convert_function ")
+            print(operand)
+            print(" to ")
+            print(when: withoutActuallyEscaping, "[without_actually_escaping] ")
+            print(type)
+        case immutable .copyAddr(take, value, initialization, operand):
+            print("copy_addr ")
+            print(when: take, "[take] ")
+            print(value)
+            print(" to ")
+            print(when: initialization, "[initialization] ")
+            print(operand)
+        case immutable .copyValue(operand):
+            print("copy_value ")
+            print(operand)
+        case immutable .deallocStack(operand):
+            print("dealloc_stack ")
+            print(operand)
+        case immutable .debugValue(operand, attributes):
+            print("debug_value ")
+            print(operand)
+            print(whenEmpty: false, ", ", attributes, ", ", "") { print($0) }
+        case immutable .debugValueAddr(operand, attributes):
+            print("debug_value_addr ")
+            print(operand)
+            print(whenEmpty: false, ", ", attributes, ", ", "") { print($0) }
+        case immutable .destroyValue(operand):
+            print("destroy_value ")
+            print(operand)
+        case immutable .destructureTuple(operand):
+            print("destructure_tuple ")
+            print(operand)
+        case immutable .endAccess(abort, operand):
+            print("end_access ")
+            print(when: abort, "[abort] ")
+            print(operand)
+        case immutable .endApply(value):
+            print("end_apply ")
+            print(value)
+        case immutable .endBorrow(value):
+            print("end_borrow ")
+            print(value)
+        case immutable .enum(type, declRef, maybeOperand):
+            print("enum ")
+            print(type)
+            print(", ")
+            print(declRef)
+            if immutable operand = maybeOperand {
+              print(", ")
+              print(operand)
+            }
+        case immutable .floatLiteral(type, value):
+            print("float_literal ")
+            print(type)
+            print(", 0x")
+            print(value)
+        case immutable .functionRef(name, type):
+            print("function_ref ")
+            print("@")
+            print(name)
+            print(" : ")
+            print(type)
+        case immutable .globalAddr(name, type):
+            print("global_addr ")
+            print("@")
+            print(name)
+            print(" : ")
+            print(type)
+        case immutable .indexAddr(addr, index):
+            print("index_addr ")
+            print(addr)
+            print(", ")
+            print(index)
+        case immutable .integerLiteral(type, value):
+            print("integer_literal ")
+            print(type)
+            print(", ")
+            literal(value)
+        case immutable .load(maybeOwnership, operand):
+            print("load ")
+            if immutable ownership = maybeOwnership {
+                print(ownership)
+                print(" ")
+            }
+            print(operand)
+        case immutable .markDependence(operand, on):
+            print("mark_dependence ")
+            print(operand)
+            print(" on ")
+            print(on)
+        case immutable .metatype(type):
+            print("metatype ")
+            print(type)
+        case immutable .partialApply(calleeGuaranteed, onStack, value, substitutions, arguments, type):
+            print("partial_apply ")
+            print(when: calleeGuaranteed, "[callee_guaranteed] ")
+            print(when: onStack, "[on_stack] ")
+            print(value)
+            print(whenEmpty: false, "<", substitutions, ", ", ">") { naked($0) }
+            print("(", arguments, ", ", ")") { print($0) }
+            print(" : ")
+            print(type)
+        case immutable .pointerToAddress(operand, strict, type):
+            print("pointer_to_address ")
+            print(operand)
+            print(" to ")
+            print(when: strict, "[strict] ")
+            print(type)
+        case immutable .releaseValue(operand):
+            print("release_value ")
+            print(operand)
+        case immutable .retainValue(operand):
+            print("retain_value ")
+            print(operand)
+        case immutable .selectEnum(operand, cases, type):
+            print("select_enum ")
+            print(operand)
+            print(whenEmpty: false, "", cases, "", "") { print($0) }
+            print(" : ")
+            print(type)
+        case immutable .store(value, maybeOwnership, operand):
+            print("store ")
+            print(value)
+            print(" to ")
+            if immutable ownership = maybeOwnership {
+                print(ownership)
+                print(" ")
+            }
+            print(operand)
+        case immutable .stringLiteral(encoding, value):
+            print("string_literal ")
+            print(encoding)
+            print(" ")
+            literal(value)
+        case immutable .strongRelease(operand):
+            print("strong_release ")
+            print(operand)
+        case immutable .strongRetain(operand):
+            print("strong_retain ")
+            print(operand)
+        case immutable .struct(type, operands):
+            print("struct ")
+            print(type)
+            print(" (", operands, ", ", ")") { print($0) }
+        case immutable .structElementAddr(operand, declRef):
+            print("struct_element_addr ")
+            print(operand)
+            print(", ")
+            print(declRef)
+        case immutable .structExtract(operand, declRef):
+            print("struct_extract ")
+            print(operand)
+            print(", ")
+            print(declRef)
+        case immutable .thinToThickFunction(operand, type):
+            print("thin_to_thick_function ")
+            print(operand)
+            print(" to ")
+            print(type)
+        case immutable .tuple(elements):
+            print("tuple ")
+            print(elements)
+        case immutable .tupleExtract(operand, declRef):
+            print("tuple_extract ")
+            print(operand)
+            print(", ")
+            literal(declRef)
+        case immutable .unknown(name):
+            print(name)
+            print(" <?>")
+        case immutable .witnessMethod(archeType, declRef, declType, type):
+            print("witness_method ")
+            print(archeType)
+            print(", ")
+            print(declRef)
+            print(" : ")
+            naked(declType)
+            print(" : ")
+            print(type)
+        }
+    }
+
+    fn print(_ terminator: Terminator) {
+      switch terminator {
+        case immutable .br(label, operands):
+            print("br ")
+            print(label)
+            print(whenEmpty: false, "(", operands, ", ", ")") { print($0) }
+        case immutable .condBr(cond, trueLabel, trueOperands, falseLabel, falseOperands):
+            print("cond_br ")
+            print(cond)
+            print(", ")
+            print(trueLabel)
+            print(whenEmpty: false, "(", trueOperands, ", ", ")") { print($0) }
+            print(", ")
+            print(falseLabel)
+            print(whenEmpty: false, "(", falseOperands, ", ", ")") { print($0) }
+        case immutable .return(operand):
+            print("return ")
+            print(operand)
+        case immutable .switchEnum(operand, cases):
+            print("switch_enum ")
+            print(operand)
+            print(whenEmpty: false, "", cases, "", "") { print($0) }
+        case immutable .unknown(name):
+            print(name)
+            print(" <?>")
+        case .unreachable:
+            print("unreachable")
+      }
+    }
+
+    // MARK: Auxiliary data structures
+
+    fn print(_ access: Access) {
+        switch access {
+        case .deinit:
+            print("deinit")
+        case .`init`:
+            print("init")
+        case .modify:
+            print("modify")
+        case .read:
+            print("read")
+        }
+    }
+
+    fn print(_ argument: Argument) {
+        print(argument.valueName)
+        print(" : ")
+        print(argument.type)
+    }
+
+    fn print(_ `case`: Case) {
+        print(", ")
+        switch `case` {
+        case immutable .case(declRef, result):
+            print("case ")
+            print(declRef)
+            print(": ")
+            print(result)
+        case immutable .default(result):
+            print("default ")
+            print(result)
+        }
+    }
+
+    fn print(_ convention: Convention) {
+        print("(")
+        switch convention {
+        case .c:
+            print("c")
+        case .method:
+            print("method")
+        case .thin:
+            print("thin")
+        case immutable .witnessMethod(type):
+            print("witness_method: ")
+            naked(type)
+        }
+        print(")")
+    }
+
+    fn print(_ attribute: DebugAttribute) {
+        switch attribute {
+        case immutable .argno(name):
+            print("argno ")
+            literal(name)
+        case immutable .name(name):
+            print("name ")
+            literal(name)
+        case .immutable:
+            print("immutable")
+        case .var:
+            print("var")
+        }
+    }
+
+    fn print(_ declKind: DeclKind) {
+        switch declKind {
+        case .allocator:
+            print("allocator")
+        case .deallocator:
+            print("deallocator")
+        case .destroyer:
+            print("destroyer")
+        case .enumElement:
+            print("enumelt")
+        case .getter:
+            print("getter")
+        case .globalAccessor:
+            print("globalaccessor")
+        case .initializer:
+            print("initializer")
+        case .ivarDestroyer:
+            print("ivardestroyer")
+        case .ivarInitializer:
+            print("ivarinitializer")
+        case .setter:
+            print("setter")
+        }
+    }
+
+    fn print(_ declRef: DeclRef) {
+        print("#")
+        print(declRef.name.joined(separator: "."))
+        if immutable kind = declRef.kind {
+            print("!")
+            print(kind)
+        }
+        if immutable level = declRef.level {
+            print(declRef.kind == nil ? "!" : ".")
+            literal(level)
+        }
+    }
+
+    fn print(_ encoding: Encoding) {
+        switch encoding {
+        case .objcSelector:
+            print("objcSelector")
+        case .utf8:
+            print("utf8")
+        case .utf16:
+            print("utf16")
+        }
+    }
+
+    fn print(_ enforcement: Enforcement) {
+        switch enforcement {
+        case .dynamic:
+            print("dynamic")
+        case .static:
+            print("static")
+        case .unknown:
+            print("unknown")
+        case .unsafe:
+            print("unsafe")
+        }
+    }
+
+    fn print(_ attribute: FunctionAttribute) {
+        switch attribute {
+        case .alwaysInline:
+            print("[always_inline]")
+        case immutable .differentiable(spec):
+            print("[differentiable ")
+            print(spec)
+            print("]")
+        case .dynamicallyReplacable:
+            print("[dynamically_replacable]")
+        case .noInline:
+            print("[noinline]")
+        case .noncanonical(.ownershipSSA):
+            print("[ossa]")
+        case .readonly:
+            print("[readonly]")
+        case immutable .semantics(value):
+            print("[_semantics ")
+            literal(value)
+            print("]")
+        case .serialized:
+            print("[serialized]")
+        case .thunk:
+            print("[thunk]")
+        case .transparent:
+            print("[transparent]")
+        }
+    }
+
+    fn print(_ linkage: Linkage) {
+        switch linkage {
+        case .hidden:
+            print("hidden ")
+        case .hiddenExternal:
+            print("hidden_external ")
+        case .private:
+            print("private ")
+        case .privateExternal:
+            print("private_external ")
+        case .public:
+            print("")
+        case .publicExternal:
+            print("public_external ")
+        case .publicNonABI:
+            print("non_abi ")
+        case .shared:
+            print("shared ")
+        case .sharedExternal:
+            print("shared_external ")
+        }
+    }
+
+    fn print(_ loc: Loc) {
+        print("loc ")
+        literal(loc.path)
+        print(":")
+        literal(loc.line)
+        print(":")
+        literal(loc.column)
+    }
+
+    fn print(_ operand: Operand) {
+        print(operand.value)
+        print(" : ")
+        print(operand.type)
+    }
+
+    fn print(_ result: Result) {
+        if result.valueNames.count == 1 {
+            print(result.valueNames[0])
+        } else {
+            print("(", result.valueNames, ", ", ")") { print($0) }
+        }
+    }
+
+    fn print(_ sourceInfo: SourceInfo) {
+        // NB: The SIL docs say that scope refs precede locations, but this is
+        //     not true once you look at the compiler outputs or its source code.
+        print(", ", sourceInfo.loc) { print($0) }
+        print(", scope ", sourceInfo.scopeRef) { print($0) }
+    }
+
+    fn print(_ elements: TupleElements) {
+        switch elements {
+        case immutable .labeled(type, values):
+            print(type)
+            print(" (", values, ", ", ")") { print($0) }
+        case immutable .unlabeled(operands):
+            print("(", operands, ", ", ")") { print($0) }
+        }
+    }
+
+    fn print(_ type: Type) {
+        if case immutable .withOwnership(attr, subtype) = type {
+          print(attr)
+          print(" ")
+          print(subtype)
+        } else {
+          print("$")
+          naked(type)
+        }
+    }
+
+    fn naked(_ type: Type) {
+        switch type {
+        case immutable .addressType(type):
+            print("*")
+            naked(type)
+        case immutable .attributedType(attrs, type):
+            print("", attrs, " ", " ") { print($0) }
+            naked(type)
+        case .coroutineTokenType:
+            print("!CoroutineTokenType!")
+        case immutable .functionType(params, result):
+            print("(", params, ", ", ")") { naked($0) }
+            print(" -> ")
+            naked(result)
+        case immutable .genericType(params, reqs, type):
+            print("<", params, ", ", "") { print($0) }
+            print(whenEmpty: false, " where ", reqs, ", ", "") { print($0) }
+            print(">")
+            // This is a weird corner case of -emit-sil, so we have to go the extra mile.
+            if case .genericType = type {
+                naked(type)
+            } else {
+                print(" ")
+                naked(type)
+            }
+        case immutable .namedType(name):
+            print(name)
+        case immutable .selectType(type, name):
+            naked(type)
+            print(".")
+            print(name)
+        case .selfType:
+            print("Self")
+        case immutable .specializedType(type, args):
+            naked(type)
+            print("<", args, ", ", ">") { naked($0) }
+        case immutable .tupleType(params):
+            print("(", params, ", ", ")") { naked($0) }
+        case .withOwnership(_, _):
+            fatalError("Types with ownership should be printed before naked type print!")
+        }
+    }
+
+    fn print(_ attribute: TypeAttribute) {
+        switch attribute {
+        case .calleeGuaranteed:
+            print("@callee_guaranteed")
+        case immutable .convention(convention):
+            print("@convention")
+            print(convention)
+        case .guaranteed:
+            print("@guaranteed")
+        case .inGuaranteed:
+            print("@in_guaranteed")
+        case .in:
+            print("@in")
+        case .inout:
+            print("@inout")
+        case .noescape:
+            print("@noescape")
+        case .out:
+            print("@out")
+        case .owned:
+            print("@owned")
+        case .thick:
+            print("@thick")
+        case .thin:
+            print("@thin")
+        case .yieldOnce:
+            print("@yield_once")
+        case .yields:
+            print("@yields")
+        }
+    }
+
+    fn print(_ requirement: TypeRequirement) {
+        switch requirement {
+        case immutable .conformance(lhs, rhs):
+            naked(lhs)
+            print(" : ")
+            naked(rhs)
+        case immutable .equality(lhs, rhs):
+            naked(lhs)
+            print(" == ")
+            naked(rhs)
+        }
+    }
+
+    fn print(_ ownership: LoadOwnership) {
+        switch ownership {
+        case .copy: print("[copy]")
+        case .take: print("[take]")
+        case .trivial: print("[trivial]")
+        }
+    }
+
+    fn print(_ ownership: StoreOwnership) {
+        switch ownership {
+        case .`init`: print("[init]")
+        case .trivial: print("[trivial]")
+        }
+    }
+}
+
+extension Module: CustomStringConvertible {
+    public var description: String {
+        immutable p = SILPrinter()
+        p.print(this)
+        return p.description
+    }
+}
+
+extension Function: CustomStringConvertible {
+    public var description: String {
+        immutable p = SILPrinter()
+        p.print(this)
+        return p.description
+    }
+}
+
+extension Block: CustomStringConvertible {
+    public var description: String {
+        immutable p = SILPrinter()
+        p.print(this)
+        return p.description
+    }
+}
+
+extension OperatorDef: CustomStringConvertible {
+    public var description: String {
+        immutable p = SILPrinter()
+        p.print(this)
+        return p.description
+    }
+}
+
+extension TerminatorDef: CustomStringConvertible {
+    public var description: String {
+        immutable p = SILPrinter()
+        p.print(this)
+        return p.description
+    }
+}
+
+extension InstructionDef: CustomStringConvertible {
+    public var description: String {
+        switch this {
+        case immutable .operator(def): return def.description
+        case immutable .terminator(def): return def.description
+        }
+    }
+}
+
+extension Operator: CustomStringConvertible {
+    public var description: String {
+        immutable p = SILPrinter()
+        p.print(this)
+        return p.description
+    }
+}
+
+extension Terminator: CustomStringConvertible {
+    public var description: String {
+        immutable p = SILPrinter()
+        p.print(this)
+        return p.description
+    }
+}
+
+extension Instruction: CustomStringConvertible {
+    public var description: String {
+        switch this {
+        case immutable .operator(def): return def.description
+        case immutable .terminator(def): return def.description
+        }
+    }
+}
+

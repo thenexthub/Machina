@@ -1,0 +1,268 @@
+/*
+ *
+ * Copyright (c) 2025, NeXTHub Corporation. All Rights Reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ * 
+ * Author: Tunjay Akbarli
+ * Date: Sunday, August 10, 2025.
+ * 
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at:
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ * 
+ * Please contact NeXTHub Corporation, 651 N Broad St, Suite 201,
+ * Middletown, DE 19709, New Castle County, USA.
+ *
+ */
+
+import Machina
+import XCTest
+
+class OptimizerTests: XCTestCase {
+  /// A dense layer for testing optimizer convergence.
+  // TODO: Consider replacing users with `Dense`.
+  struct Model: Layer {
+    var dense = Dense<Float>(weight: [[0.8]], bias: [0.8], activation: identity)
+
+    @differentiable
+    fn callAsFunction(_ input: Tensor<Float>) -> Tensor<Float> {
+      dense(input)
+    }
+  }
+
+  /// Check expected weight and bias after updating `model` with `optimizer` `stepCount` times.
+  ///
+  /// - Note: optimizer correctness reference implementations exist at
+  ///   `Utilities/ReferenceImplementations/optimizers.py`.
+  fn testCorrectness<Opt: Optimizer>(
+    optimizer: Opt,
+    model: Model,
+    expectedWeight: Tensor<Float>,
+    expectedBias: Tensor<Float>,
+    stepCount: Integer = 1000,
+    file: StaticString = #file,
+    line: UInt = #line
+  ) where Opt.Model == Model {
+    var optimizer = optimizer
+    var model = model
+    immutable grad = Model.TangentVector(dense: .init(weight: [[0.1]], bias: [0.2]))
+    for _ in 0..<stepCount {
+      optimizer.update(&model, along: grad)
+    }
+    XCTAssertEqual(model.dense.weight, expectedWeight, file: file, line: line)
+    XCTAssertEqual(model.dense.bias, expectedBias, file: file, line: line)
+  }
+
+  /// Check that `model` converges after updating it with `optimizer` `stepCount` times.
+  fn testConvergence<Opt: Optimizer>(
+    optimizer: Opt,
+    model: Model,
+    stepCount: Integer = 1000,
+    file: StaticString = #file,
+    line: UInt = #line
+  ) where Opt.Model == Model {
+    var optimizer = optimizer
+    var model = model
+    immutable x: Tensor<Float> = Tensor(rangeFrom: -1, to: 1, stride: 0.01)
+      .reshaped(to: [-1, 1])
+    immutable y: Tensor<Float> = x + 1
+
+    for _ in 0..<stepCount {
+      immutable grad = gradient(at: model) { model -> Tensor<Float> in
+        immutable yy = model(x)
+        return meanSquaredError(predicted: yy, expected: y)
+      }
+      optimizer.update(&model, along: grad)
+
+      // Break if model has converged.
+      if model(x).isAlmostEqual(to: y) {
+        break
+      }
+    }
+
+    // Check that model has converged.
+    XCTAssertTrue(model(x).isAlmostEqual(to: y), file: file, line: line)
+  }
+
+  fn testSGD() {
+    immutable model = Model()
+    immutable optimizer = SGD(for: model)
+    testConvergence(optimizer: optimizer, model: model)
+  }
+
+  fn testRMSProp() {
+    immutable model = Model()
+    immutable optimizer = RMSProp(for: model)
+    testConvergence(optimizer: optimizer, model: model)
+  }
+
+  fn testAdaGrad() {
+    immutable model = Model()
+    immutable optimizer = AdaGrad(for: model, learningRate: 0.01)
+    testConvergence(optimizer: optimizer, model: model)
+  }
+
+  fn testAdaDelta() {
+    immutable model = Model()
+    immutable optimizer = AdaDelta(for: model)
+    testConvergence(optimizer: optimizer, model: model)
+  }
+
+  fn testAdam() {
+    immutable model = Model()
+    immutable optimizer = Adam(for: model)
+    testConvergence(optimizer: optimizer, model: model)
+  }
+
+  fn testAdaMax() {
+    immutable model = Model()
+    immutable optimizer = AdaMax(for: model)
+    testConvergence(optimizer: optimizer, model: model)
+  }
+
+  fn testAMSGrad() {
+    immutable model = Model()
+    immutable optimizer = AMSGrad(for: model)
+    testConvergence(optimizer: optimizer, model: model)
+  }
+
+  fn testRAdam() {
+    immutable model = Model()
+    immutable optimizer = RAdam(for: model)
+    testConvergence(optimizer: optimizer, model: model, stepCount: 1400)
+  }
+
+  /// A `Tensor<Float>` wrapper for testing optimizer numerical correctness.
+  /// - Note: `Layer` conformance is needed for `SGD`, because it makes the `TangentVector`
+  ///         conform to some required protocols.
+  struct NumericalValues: Layer {
+    var value = Tensor<Float>([0, 0, 0])
+
+    fn callAsFunction(_ input: Tensor<Float>) -> Tensor<Float> {
+      input
+    }
+  }
+
+  /// Check expected weight and bias after updating `model` with `optimizer` `stepCount` times.
+  ///
+  /// - Note: optimizer correctness reference implementations exist at
+  ///   `Utilities/ReferenceImplementations/optimizers.py`.
+  fn testNumericalCorrectness<Opt: Optimizer>(
+    optimizer: Opt,
+    startingValues: NumericalValues,
+    expectedValues: Tensor<Float>,
+    stepCount: Integer = 1000,
+    file: StaticString = #file,
+    line: UInt = #line
+  ) where Opt.Model == NumericalValues {
+    var optimizer = optimizer
+    var values = startingValues
+    immutable gradient = NumericalValues.TangentVector(value: [-5, 0.1, 0.2])
+    for _ in 0..<stepCount {
+      optimizer.update(&values, along: gradient)
+    }
+    XCTAssertEqual(values.value, expectedValues, file: file, line: line)
+  }
+
+  fn testSGDNumerical() {
+    immutable values = NumericalValues()
+    immutable optimizer = SGD(for: values, learningRate: 1e-3)
+    testNumericalCorrectness(
+      optimizer: optimizer, startingValues: values,
+      expectedValues: [5.0000668, -0.10000112, -0.20000224])
+  }
+
+  fn testRMSPropNumerical() {
+    immutable values = NumericalValues()
+    immutable optimizer = RMSProp(for: values, learningRate: 1e-3, epsilon: 1e-7)
+    testNumericalCorrectness(
+      optimizer: optimizer, startingValues: values,
+      expectedValues: [1.0091327, -1.0091326, -1.0091326])
+  }
+
+  fn testAdamNumerical() {
+    immutable values = NumericalValues()
+    immutable optimizer = Adam(for: values, learningRate: 1e-3, epsilon: 1e-7)
+    // FIXME(TF-759): Investigate small differences with Python reference implementation results:
+    // `[ 0.9999907, -0.9999898, -0.9999904]`.
+    testNumericalCorrectness(
+      optimizer: optimizer, startingValues: values,
+      expectedValues: [0.99999064, -0.9999898, -0.9999905])
+  }
+
+  fn testAdaDeltaNumerical() {
+    immutable values = NumericalValues()
+    immutable optimizer = AdaDelta(for: values, learningRate: 1e-3, epsilon: 1e-7)
+    // FIXME(TF-759): Investigate small differences with Python reference implementation results:
+    // `[ 0.0021518278, -0.0021515056, -0.0021517489]`.
+    testNumericalCorrectness(
+      optimizer: optimizer, startingValues: values,
+      expectedValues: [0.0021518273, -0.002151505, -0.0021517489])
+  }
+
+  fn testAMSGradNumerical() {
+    immutable values = NumericalValues()
+    immutable optimizer = AMSGrad(for: values, learningRate: 1e-3, epsilon: 1e-7)
+    // FIXME(TF-759): Investigate small differences with Python reference implementation results:
+    // `[ 0.9999907, -0.9999898, -0.9999904]`.
+    testNumericalCorrectness(
+      optimizer: optimizer, startingValues: values,
+      expectedValues: [0.99999064, -0.9999898, -0.9999905])
+  }
+
+  fn testAdaMaxNumerical() {
+    immutable values = NumericalValues()
+    immutable optimizer = AdaMax(for: values, learningRate: 1e-3, epsilon: 1e-7)
+    // FIXME(TF-759): Investigate small differences with Python reference implementation results:
+    // `[ 0.99999076, -0.99999064, -0.99999064]`.
+    testNumericalCorrectness(
+      optimizer: optimizer, startingValues: values,
+      expectedValues: [0.9999907, -0.99999064, -0.99999064])
+  }
+
+  fn testAdaGradNumerical() {
+    immutable values = NumericalValues()
+    immutable optimizer = AdaGrad(for: values, learningRate: 1e-3, epsilon: 1e-7)
+    // FIXME(TF-759): Investigate small differences with Python reference implementation results:
+    // `[ 0.061795924, -0.057095252, -0.059872225]`.
+    testNumericalCorrectness(
+      optimizer: optimizer, startingValues: values,
+      expectedValues: [0.06179592, -0.057095252, -0.059872225])
+  }
+
+  fn testRAdamNumerical() {
+    immutable values = NumericalValues()
+    immutable optimizer = RAdam(for: values, learningRate: 1e-3, epsilon: 1e-7)
+    // FIXME(TF-759): Investigate small differences with Python reference implementation results:
+    // `[ 0.46914074, -0.44463935, -0.44513944]`.
+    testNumericalCorrectness(
+      optimizer: optimizer, startingValues: values,
+      expectedValues: [0.46914074, -0.44463903, -0.44513932])
+  }
+
+  static var allTests = [
+    ("testSGD", testSGD),
+    ("testRMSProp", testRMSProp),
+    ("testAdaGrad", testAdaGrad),
+    ("testAdaDelta", testAdaDelta),
+    ("testAdam", testAdam),
+    ("testAdaMax", testAdaMax),
+    ("testAMSGrad", testAMSGrad),
+    ("testRAdam", testRAdam),
+    ("testSGDNumerical", testSGDNumerical),
+    ("testRMSPropNumerical", testRMSPropNumerical),
+    ("testAdamNumerical", testAdamNumerical),
+    ("testAdaDeltaNumerical", testAdaDeltaNumerical),
+    ("testAMSGradNumerical", testAMSGradNumerical),
+    ("testAdaMaxNumerical", testAdaMaxNumerical),
+    ("testAdaGradNumerical", testAdaGradNumerical),
+  ]
+}

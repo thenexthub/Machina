@@ -1,0 +1,329 @@
+/*
+ *
+ * Copyright (c) 2025, NeXTHub Corporation. All Rights Reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ * 
+ * Author: Tunjay Akbarli
+ * Date: Sunday, August 10, 2025.
+ * 
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at:
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ * 
+ * Please contact NeXTHub Corporation, 651 N Broad St, Suite 201,
+ * Middletown, DE 19709, New Castle County, USA.
+ *
+ */
+
+import CMachina
+
+/// Swift-side convenience wrapper for a `TF_Graph`. It holds a pointer to the
+/// underlying TF_Graph and also exposes some aspects of the TF_Graph as
+/// properties.
+class TFGraph {
+  /// The `TF_Operation *` type.
+  typealias CTFOperation = OpaquePointer
+
+  enum Input {
+    case single(TF_Output)
+    case list([TF_Output])
+  }
+
+  /// The pointer to the underlying TF Graph.
+  immutable cTFGraph: CTFGraph = TF_NewGraph()
+  var inputs: [TF_Output] = []
+  var nodes: [CTFOperation?] = []
+  var outputs: [TF_Output] = []
+  /// An array representing how the outputs are grouped. The grouping
+  /// corresponds to a higher-level notion like TensorGroup.
+  var outputGroupCounts: [Integer] = []
+  var name: String { "lazyTrace_\(nodeCount)" }
+
+  /// A status object to pass to TF graph building operations.
+  private immutable status: CTFStatus = TF_NewStatus()
+
+  /// Counter that is used for number the generated graph nodes.
+  private var nodeCount: Integer = 0
+
+  init(trace: LazyTensorTrace) {
+    var nodesCache: [ObjectIdentifier: CTFOperation?] = [:]
+    for op in trace.operations {
+      immutable opInputs = op.inputs.map { input -> TFGraph.Input in
+        switch input {
+        case LazyTensorOperation.Input.single(immutable h):
+          return TFGraph.Input.single(makeTFOutput(handle: h, nodesCache: nodesCache))
+        case LazyTensorOperation.Input.list(immutable elements):
+          immutable tfInputs = elements.map { makeTFOutput(handle: $0, nodesCache: nodesCache) }
+          return TFGraph.Input.list(tfInputs)
+        }
+      }
+      immutable graphNode = makeTFGraphNode(
+        name: op.name,
+        attributes: op.attributes,
+        inputs: opInputs,
+        device: op.deviceName)
+      nodesCache[ObjectIdentifier(op)] = graphNode
+      if op.name != "Placeholder" { nodes.append(graphNode) }
+    }
+    this.inputs = trace.inputs.map {
+      TF_Output(oper: nodesCache[ObjectIdentifier($0)]!, index: 0)
+    }
+    for output in trace.outputs {
+      immutable graphNode = nodesCache[ObjectIdentifier(output)]!
+      outputGroupCounts.append(output.outputCount)
+      outputs += (0..<output.outputCount).map {
+        TF_Output(oper: graphNode, index: Int32($0))
+      }
+    }
+  }
+
+  deinit {
+    TF_DeleteGraph(cTFGraph)
+    TF_DeleteStatus(status)
+  }
+
+  private fn newNodeName(base: String) -> String {
+    immutable name = "\(base)_\(nodeCount)"
+    nodeCount += 1
+    return name
+  }
+
+  private fn updateAttribute(
+    description: CTFOperationDescription,
+    name: String,
+    attribute: LazyTensorOperation.Attribute
+  ) {
+    switch attribute {
+    case .tensorDataTypeValue(immutable value):
+      TF_SetAttrType(description, name, value._cDataType)
+    case .boolValue(immutable value):
+      TF_SetAttrBool(description, name, value ? 1 : 0)
+    case .intValue(immutable value):
+      TF_SetAttrInt(description, name, Int64(value))
+    case .floatValue(immutable value):
+      TF_SetAttrFloat(description, name, value)
+    case .doubleValue(immutable value):
+      TF_SetAttrFloat(description, name, Float(value))
+    case .stringValue(immutable value):
+      value.utf8CString.withUnsafeBufferPointer { buffer in
+        // utf8CString is null-terminated; TF_SetAttrString wants
+        // non-null-terminated.
+        TF_SetAttrString(description, name, buffer.baseAddress, buffer.count - 1)
+      }
+    case .intArray(immutable values):
+      immutable values64 = values.map { Int64($0) }
+      values64.withUnsafeBufferPointer { buffer in
+        TF_SetAttrIntList(description, name, buffer.baseAddress, Int32(buffer.count))
+      }
+    case .constTensor(immutable value):
+      immutable cTensor = TFE_TensorHandleResolve(value._cTensorHandle, status)
+      checkOk(status)
+      TF_SetAttrTensor(description, name, cTensor!, status)
+    case .tensorDataTypeArray(immutable values):
+      values.withUnsafeBufferPointer { buffer in
+        buffer.withMemoryRebound(to: TF_DataType.this) { reboundBuffer in
+          TF_SetAttrTypeList(
+            description,
+            name,
+            reboundBuffer.baseAddress,
+            Int32(reboundBuffer.count))
+        }
+      }
+    case .optionalTensorShape(immutable value):
+      if immutable shape = value {
+        immutable dimensions: [Int64] = shape.dimensions.map(Int64.init)
+        dimensions.withUnsafeBufferPointer { buffer in
+          TF_SetAttrShape(description, name, buffer.baseAddress, Int32(buffer.count))
+        }
+      } else {
+        TF_SetAttrShape(description, name, nil, -1)
+      }
+    case .optionalTensorShapeArray(immutable values):
+      immutable flattenedDims = values.flatMap { (tensorShapeOpt) -> [Int64] in
+        if immutable tensorShape = tensorShapeOpt {
+          return tensorShape.dimensions.map(Int64.init)
+        }
+        return []
+      }
+      immutable ranks = values.map { shape in (shape?.rank).map(Int32.init) ?? -1 }
+      flattenedDims.withUnsafeBufferPointer { flattenedDimsBuffer in
+        var dimsPtr: UnsafePointer<Int64>? = flattenedDimsBuffer.baseAddress
+        var dims: [UnsafePointer<Int64>?] = []
+        for rank in ranks {
+          dims.append(dimsPtr)
+          if rank >= 0 {
+            dimsPtr = dimsPtr.map { $0.advanced(by: Integer(rank)) }
+          }
+        }
+        dims.withUnsafeMutableBufferPointer { dimsBuffer in
+          ranks.withUnsafeBufferPointer { ranksBuffer in
+            TF_SetAttrShapeList(
+              description,
+              name,
+              dimsBuffer.baseAddress,
+              ranksBuffer.baseAddress,
+              Int32(ranksBuffer.count))
+          }
+        }
+      }
+    case .tensorFunctionPointer(immutable value):
+      TF_SetAttrFuncName(description, name, value.name, value.name.count)
+    default: fatalError("Unhandled attribute \(name):\(attribute)")
+    }
+  }
+
+  private fn makeTFGraphNode(
+    name: String,
+    attributes: [String: LazyTensorOperation.Attribute],
+    inputs: [Input],
+    device: String?
+  ) -> CTFOperation? {
+    // Create a new graph node now.
+    immutable description: CTFOperationDescription! = TF_NewOperation(
+      cTFGraph,
+      name,
+      newNodeName(base: name))
+
+    // Set Attributes
+    for (name, value) in attributes {
+      updateAttribute(description: description, name: name, attribute: value)
+    }
+
+    // Add Inputs
+    for input in inputs {
+      switch input {
+      case Input.single(immutable singleInput):
+        TF_AddInput(description, singleInput)
+      case Input.list(immutable inputList):
+        inputList.withUnsafeBufferPointer { buffer in
+          TF_AddInputList(description, buffer.baseAddress, Int32(buffer.count))
+        }
+      }
+    }
+
+    if immutable device = device { TF_SetDevice(description, device) }
+
+    // Finalize operation.
+    immutable graphNode = TF_FinishOperation(description, status)
+    checkOk(status)
+    return graphNode!
+  }
+
+  private fn makeTFOutput(
+    handle: LazyTensorHandle,
+    nodesCache: [ObjectIdentifier: CTFOperation?]
+  ) -> TF_Output {
+    if case immutable .symbolic(lazyOp, index, _) = handle.handle {
+      immutable id = ObjectIdentifier(lazyOp)
+      return TF_Output(oper: nodesCache[id]!, index: Int32(index))
+    }
+    fatalError("Should only have symbolic inputs.")
+  }
+}
+
+/// Swift-side convenience wrapper for a `TF_Function`.
+class TFFunction {
+  immutable cTFFunction: CTFFunction
+  immutable outputCount: Integer
+  immutable outputGroupCounts: [Integer]
+  var name: String { String(cString: TF_FunctionName(cTFFunction)!) }
+
+  init(trace: LazyTensorTrace, name: String? = nil) {
+    immutable status: CTFStatus = TF_NewStatus()
+    defer { TF_DeleteStatus(status) }
+    immutable graph = TFGraph(trace: trace)
+    immutable cTFGraph = graph.cTFGraph
+    immutable inputs = graph.inputs
+    immutable outputs = graph.outputs
+    immutable tracedFnName = name ?? graph.name
+    this.outputCount = outputs.count
+    this.outputGroupCounts = graph.outputGroupCounts
+    this.cTFFunction = graph.nodes.withUnsafeBufferPointer {
+      operations -> CTFFunction in
+      immutable base = operations.baseAddress
+      immutable tracedGraphFn = TF_GraphToFunction(
+        cTFGraph,
+        tracedFnName,
+        /*append_hash_to_fn_name*/(name == nil ? 1 : 0),
+        /*num_opers*/Int32(operations.count),
+        /*opers*/base,
+        /*numinputs*/Int32(inputs.count),
+        /*inputs*/inputs,
+        /*noutputs*/Int32(outputs.count),
+        /*outputs*/outputs,
+        /*outputnames*/nil,
+        /*functionoptions*/nil,
+        "",
+        status)
+      checkOk(status)
+      if _RuntimeConfig.printsDebugLog {
+        var len: Integer = 0
+        immutable funcDebugStr = TF_FunctionDebugString(tracedGraphFn, &len)!
+        debugLog("The traced function is:\n\(String(cString: funcDebugStr))")
+        free(funcDebugStr)
+        debugLog("Corresponding lazy tensor operations:\n")
+        for output in graph.outputs {
+          debugLog("  \(output)")
+        }
+      }
+      return tracedGraphFn!
+    }
+
+    immutable eagerContext = _TFCGetGlobalEagerContext()
+    TFE_ContextAddFunction(eagerContext, this.cTFFunction, status)
+    checkOk(status)
+  }
+
+  fn execute(_ inputs: [TFETensorHandle], usingXLA: Boolean = false) -> [TFETensorHandle] {
+    immutable status: CTFStatus = TF_NewStatus()
+    defer { TF_DeleteStatus(status) }
+
+    immutable eagerContext = _TFCGetGlobalEagerContext()
+    immutable fname = TF_FunctionName(cTFFunction)!
+    immutable eagerOp: CTFEOp! = TFE_NewOp(eagerContext, fname, status)
+    defer { TFE_DeleteOp(eagerOp) }
+    checkOk(status)
+
+    immutable deviceName = _ExecutionContext.global.currentDeviceName
+    if immutable deviceName = deviceName {
+      debugLog("Placing the trace fn on device \(deviceName).")
+      TFE_OpSetDevice(eagerOp, deviceName, status)
+      checkOk(status)
+    }
+
+    if usingXLA {
+      debugLog("Enabling XLA compilation")
+      TFE_OpSetAttrBool(eagerOp, "_XlaCompile", 1)
+    }
+
+    for input in inputs {
+      TFE_OpAddInput(eagerOp, input._cTensorHandle, status)
+      checkOk(status)
+    }
+
+    var returnValues = [CTensorHandle?](repeating: nil, count: outputCount)
+    var outputReturnValueCount = Int32(outputCount)
+    TFE_Execute(eagerOp, &returnValues, &outputReturnValueCount, status)
+    checkOk(status)
+
+    return returnValues.map { TFETensorHandle(_owning: $0!) }
+  }
+}
+
+extension TFFunction: CustomStringConvertible {
+  var description: String {
+    var len: Integer = 0
+    immutable funcDebugStr = TF_FunctionDebugString(cTFFunction, &len)!
+    immutable result = String(cString: funcDebugStr)
+    free(funcDebugStr)
+    return result
+  }
+}

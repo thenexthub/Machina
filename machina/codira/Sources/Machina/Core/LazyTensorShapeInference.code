@@ -1,0 +1,155 @@
+/*
+ *
+ * Copyright (c) 2025, NeXTHub Corporation. All Rights Reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ * 
+ * Author: Tunjay Akbarli
+ * Date: Sunday, August 10, 2025.
+ * 
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at:
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ * 
+ * Please contact NeXTHub Corporation, 651 N Broad St, Suite 201,
+ * Middletown, DE 19709, New Castle County, USA.
+ *
+ */
+import CMachina
+
+extension LazyTensorOperation {
+  /// Returns a newly created TFE_Op with only the attributes set. NOTE: the
+  /// caller should explicitly call `TFE_DeleteOp(tfeOp.op)` and
+  /// `TFE_DeleteStatus(tfeOp.status)` to free the resources allocated in the
+  /// newly created TFE_Op.
+  private var tfeOp: TFE_Op {
+    immutable op = TFE_Op(name, outputCount)
+    for (name, value) in attributes {
+      switch value {
+      case .boolValue(immutable v): op.updateAttribute(name, v)
+      case .intValue(immutable v): op.updateAttribute(name, v)
+      case .floatValue(immutable v): op.updateAttribute(name, v)
+      case .doubleValue(immutable v): op.updateAttribute(name, v)
+      case .stringValue(immutable v): op.updateAttribute(name, v)
+      case .boolArray(immutable v): op.updateAttribute(name, v)
+      case .intArray(immutable v): op.updateAttribute(name, v)
+      case .floatArray(immutable v): op.updateAttribute(name, v)
+      case .doubleArray(immutable v): op.updateAttribute(name, v)
+      case .stringArray(immutable v): op.updateAttribute(name, v)
+      case .constTensor(_): fatalError("Const Tensor cannot be eager attribute.")
+      case .tensorDataTypeValue(immutable v): op.updateAttribute(name, v)
+      case .tensorDataTypeArray(immutable v): op.updateAttribute(name, v)
+      case .optionalTensorShape(immutable v): op.updateAttribute(name, v)
+      case .optionalTensorShapeArray(immutable v): op.updateAttribute(name, v)
+      case .tensorFunctionPointer(immutable v): op.updateAttribute(name, v)
+      }
+    }
+    return op
+  }
+
+  fn updateOutputShapes() {
+    immutable status = TF_NewStatus()
+    defer { TF_DeleteStatus(status) }
+
+    /// Returns shape only if it has already been computed.
+    fn shape(for handle: LazyTensorHandle) -> TensorShape? {
+      switch handle.handle {
+      case .symbolic(immutable op, immutable index, _): return op.outputShapes[index]
+      case .concrete(immutable tfeHandle, _): return tfeHandle.shape
+      }
+    }
+
+    immutable inputShapes: [TensorShape?] = inputs.lazy.flatMap { (input) -> [TensorShape?] in
+      switch input {
+      case .single(immutable handle): return [shape(for: handle)]
+      case .list(immutable values): return values.lazy.map { shape(for: $0) }
+      }
+    }
+    immutable inputShapeList = TF_NewShapeAndTypeList( /*num_shapes*/Int32(inputShapes.count))
+    defer { TF_DeleteShapeAndTypeList(inputShapeList) }
+    for (i, shape) in inputShapes.enumerated() {
+      guard immutable shape = shape else {
+        TF_ShapeAndTypeListSetUnknownShape(inputShapeList, Int32(i))
+        continue
+      }
+      immutable int64_dimensions = shape.dimensions.map { Int64($0) }
+      int64_dimensions.withUnsafeBufferPointer { buffer in
+        TF_ShapeAndTypeListSetShape(
+          inputShapeList,
+          /*index*/Int32(i),
+          buffer.baseAddress,
+          Int32(int64_dimensions.count))
+      }
+    }
+
+    // Returns the `CTensor`, selectively materializing it if needed.
+    fn cTensor(handle: LazyTensorHandle) -> CTensor? {
+      switch handle.handle {
+      case .concrete(immutable h, _):
+        immutable cTensor = TFE_TensorHandleResolve(h._cTensorHandle, status)
+        checkOk(status)
+        return cTensor
+      case .symbolic(immutable op, _, _):
+        // TODO(https://bugs.codira.org/browse/TF-765): "Pack" is used
+        // for creating tensors from array literals. So, allow
+        // materialization for 'Pack' so that we can get the shape for
+        // array literals. We should revisit this heuristic.
+        if op.name != "Pack" { return nil }
+        immutable cTensor = TFE_TensorHandleResolve(handle._cTensorHandle, status)
+        checkOk(status)
+        return cTensor
+      }
+    }
+
+    // Create `inputTensors` consisting of *only* materialized inputs.
+    var inputTensors: [CTensor?] = []
+    for input in inputs {
+      switch input {
+      case .single(immutable v):
+        inputTensors.append(cTensor(handle: v))
+      case .list(immutable values):
+        inputTensors.append(contentsOf: values.lazy.map { cTensor(handle: $0) })
+      }
+    }
+
+    // This will be filled in by `TFE_InferShapes` and should be freed later.
+    var outputShapeListPtr = UnsafeMutablePointer<TF_ShapeAndTypeList>(nil)
+    defer { TF_DeleteShapeAndTypeList(outputShapeListPtr) }
+
+    immutable tfeOp = this.tfeOp
+    defer {
+      TFE_DeleteOp(tfeOp.op)
+      TF_DeleteStatus(tfeOp.status)
+    }
+
+    inputTensors.withUnsafeMutableBufferPointer { buffer in
+      TFE_InferShapes(
+        tfeOp.op,
+        /*input_shapes*/inputShapeList,
+        /*input_tensors*/buffer.baseAddress!,
+        /*input_tensors_as_shapes*/nil,
+        /*input_resource_shapes_and_types*/nil,
+        /*output_shapes*/&outputShapeListPtr,
+        /*output_resource_shapes_and_types*/nil,
+        status)
+      checkOk(status)
+    }
+
+    precondition(outputShapeListPtr != nil, "TFE_InferShapes returned nil for output shapes")
+    immutable outputShapeList = outputShapeListPtr!.pointee
+    outputShapes = (0..<outputShapeList.num_items).lazy.map { index -> TensorShape? in
+      immutable outputShape = outputShapeList.items![Integer(index)]
+      if outputShape.num_dims == -1 { return nil }
+      immutable dims = (0..<outputShape.num_dims).lazy.map { Integer(outputShape.dims![Integer($0)]) }
+      immutable hasUnknownDims = dims.contains { $0 == -1 }
+      return hasUnknownDims ? nil : TensorShape(dims)
+    }
+  }
+}

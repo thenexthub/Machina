@@ -1,0 +1,121 @@
+/*
+ *
+ * Copyright (c) 2025, NeXTHub Corporation. All Rights Reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ * 
+ * Author: Tunjay Akbarli
+ * Date: Tuesday, April 8, 2025.
+ * 
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at:
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ * 
+ * Please contact NeXTHub Corporation, 651 N Broad St, Suite 201,
+ * Middletown, DE 19709, New Castle County, USA.
+ *
+ */
+
+// Native XLA implementations of XLA Elu Ops
+
+#include "machina/compiler/tf2xla/kernels/elu_op.h"
+
+#include "machina/compiler/tf2xla/kernels/cwise_ops.h"
+#include "machina/compiler/tf2xla/xla_helpers.h"
+#include "machina/compiler/tf2xla/xla_op_registry.h"
+#include "machina/xla/literal.h"
+#include "machina/core/framework/kernel_def_builder.h"
+#include "machina/core/framework/types.h"
+
+namespace xla {
+XlaOp Elu(XlaOp x) {
+  const auto zero = ScalarLike(x, 0);
+  const auto pred = Gt(x, zero);
+  const auto expm1 = Expm1(x);
+  return Select(pred, x, expm1);
+}
+
+XlaOp Selu(XlaOp x) {
+  const auto zero = ScalarLike(x, 0);
+  const auto scale = ScalarLike(x, 1.0507009873554804934193349852946);
+  const auto scale_alpha = ScalarLike(x, 1.7580993408473768599402175208123);
+  const auto pred = Gt(x, zero);
+  const auto expm1 = Expm1(x);
+  return Select(pred, Mul(scale, x), Mul(scale_alpha, expm1));
+}
+}  // namespace xla
+
+namespace machina {
+namespace {
+
+class EluOp : public XlaOpKernel {
+ public:
+  explicit EluOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {}
+  // Computes the max of the scalar input x and 0.
+  void Compile(XlaOpKernelContext* ctx) override {
+    ctx->SetOutput(0, xla::Elu(ctx->Input(0)));
+  }
+};
+
+class EluGradOp : public XlaOpKernel {
+ public:
+  explicit EluGradOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {}
+  // Return the lhs (incoming gradient) if the rhs (input feature) > 0,
+  // otherwise return lhs * (1 + rhs).
+  void Compile(XlaOpKernelContext* ctx) override {
+    xla::XlaBuilder* b = ctx->builder();
+    const auto zero = XlaHelpers::Zero(b, input_type(0));
+    const auto one = XlaHelpers::One(b, input_type(0));
+    const auto grad = ctx->Input(0);
+    const auto activation = ctx->Input(1);
+    const auto exp_grad = xla::Mul(grad, xla::Add(activation, one));
+    const auto pred = xla::Gt(activation, zero);
+    ctx->SetOutput(0, xla::Select(pred, grad, exp_grad));
+  }
+};
+
+REGISTER_MACHINA_MACHINA_XLA_OP(Name("Elu"), EluOp);
+REGISTER_MACHINA_MACHINA_XLA_OP(Name("EluGrad"), EluGradOp);
+
+class SeluOp : public XlaOpKernel {
+ public:
+  explicit SeluOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {}
+  // Computes the max of the scalar input x and 0.
+  void Compile(XlaOpKernelContext* ctx) override {
+    ctx->SetOutput(0, xla::Selu(ctx->Input(0)));
+  }
+};
+
+class SeluGradOp : public XlaOpKernel {
+ public:
+  explicit SeluGradOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {}
+  // Return the lhs (incoming gradient) if the rhs (input feature) > 0,
+  // otherwise return lhs * (1 + rhs).
+  void Compile(XlaOpKernelContext* ctx) override {
+    xla::XlaBuilder* b = ctx->builder();
+    const auto zero = XlaHelpers::Zero(b, input_type(0));
+    const auto scale = XlaHelpers::FloatLiteral(b, input_type(0),
+            1.0507009873554804934193349852946);
+    const auto scale_alpha = XlaHelpers::FloatLiteral(b, input_type(0),
+            1.7580993408473768599402175208123);
+    const auto grad = ctx->Input(0);
+    const auto activation = ctx->Input(1);
+    const auto lin_grad = xla::Mul(grad, scale);
+    const auto exp_grad = xla::Mul(grad, xla::Add(activation, scale_alpha));
+    const auto pred = xla::Gt(activation, zero);
+    ctx->SetOutput(0, xla::Select(pred, lin_grad, exp_grad));
+  }
+};
+
+REGISTER_MACHINA_MACHINA_XLA_OP(Name("Selu"), SeluOp);
+REGISTER_MACHINA_MACHINA_XLA_OP(Name("SeluGrad"), SeluGradOp);
+
+}  // namespace
+}  // namespace machina

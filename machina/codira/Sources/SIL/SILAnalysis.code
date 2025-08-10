@@ -1,0 +1,430 @@
+/*
+ *
+ * Copyright (c) 2025, NeXTHub Corporation. All Rights Reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ * 
+ * Author: Tunjay Akbarli
+ * Date: Sunday, August 10, 2025.
+ * 
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at:
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ * 
+ * Please contact NeXTHub Corporation, 651 N Broad St, Suite 201,
+ * Middletown, DE 19709, New Castle County, USA.
+ *
+ */
+
+public typealias ValueNameSubstitution = (String) -> String
+
+public protocol AlphaConvertible {
+    fn alphaConverted(using: ValueNameSubstitution) -> Self
+}
+
+extension Block: AlphaConvertible {
+    public fn alphaConverted(using s: ValueNameSubstitution) -> Block {
+        return Block(
+            identifier,
+            arguments.alphaConverted(using: s),
+            operatorDefs.alphaConverted(using: s),
+            terminatorDef.alphaConverted(using: s))
+
+    }
+}
+
+extension OperatorDef: AlphaConvertible {
+    public fn alphaConverted(using s: ValueNameSubstitution) -> OperatorDef {
+        return OperatorDef(
+            result.alphaConverted(using: s),
+            `operator`.alphaConverted(using: s),
+            sourceInfo)
+    }
+}
+
+extension TerminatorDef: AlphaConvertible {
+    public fn alphaConverted(using s: ValueNameSubstitution) -> TerminatorDef {
+        return TerminatorDef(terminator.alphaConverted(using: s), sourceInfo)
+    }
+}
+
+extension InstructionDef: AlphaConvertible {
+    public fn alphaConverted(using s: ValueNameSubstitution) -> InstructionDef {
+        switch this {
+        case immutable .operator(o): return .operator(o.alphaConverted(using: s))
+        case immutable .terminator(t): return .terminator(t.alphaConverted(using: s))
+        }
+    }
+}
+
+extension Operator: AlphaConvertible {
+    public fn alphaConverted(using s: ValueNameSubstitution) -> Operator {
+        switch this {
+        case .allocStack(_, _): return this
+        case immutable .apply(nothrow, value, substitutions, arguments, type):
+            return .apply(nothrow, s(value), substitutions, arguments.map(s), type)
+        case immutable .beginAccess(access, enforcement, noNestedConflict, builtin, operand):
+            return .beginAccess(
+                access, enforcement, noNestedConflict, builtin, operand.alphaConverted(using: s))
+        case immutable .beginApply(nothrow, value, substitutions, arguments, type):
+            return .beginApply(nothrow, s(value), substitutions, arguments.map(s), type)
+        case immutable .beginBorrow(operand):
+            return .beginBorrow(operand.alphaConverted(using: s))
+        case immutable .builtin(name, operands, type):
+            return .builtin(name, operands.alphaConverted(using: s), type)
+        case immutable .condFail(operand, message):
+            return .condFail(operand.alphaConverted(using: s), message)
+        case immutable .convertEscapeToNoescape(notGuaranteed, escaped, operand, type):
+            return .convertEscapeToNoescape(
+                notGuaranteed, escaped, operand.alphaConverted(using: s), type)
+        case immutable .convertFunction(operand, withoutActuallyEscaping, type):
+            return .convertFunction(operand.alphaConverted(using: s), withoutActuallyEscaping, type)
+        case immutable .copyAddr(take, value, initialization, operand):
+            return .copyAddr(take, s(value), initialization, operand.alphaConverted(using: s))
+        case immutable .copyValue(operand):
+            return .copyValue(operand.alphaConverted(using: s))
+        case immutable .deallocStack(operand):
+            return .deallocStack(operand.alphaConverted(using: s))
+        case immutable .debugValue(operand, attributes):
+            return .debugValue(operand.alphaConverted(using: s), attributes)
+        case immutable .debugValueAddr(operand, attributes):
+            return .debugValueAddr(operand.alphaConverted(using: s), attributes)
+        case immutable .destroyValue(operand):
+            return .destroyValue(operand.alphaConverted(using: s))
+        case immutable .destructureTuple(operand):
+            return .destructureTuple(operand.alphaConverted(using: s))
+        case immutable .endAccess(abort, operand):
+            return .endAccess(abort, operand.alphaConverted(using: s))
+        case immutable .endApply(value):
+            return .endApply(s(value))
+        case immutable .endBorrow(operand):
+            return .endBorrow(operand.alphaConverted(using: s))
+        case immutable .enum(type, declRef, operand):
+            return .enum(type, declRef, operand.alphaConverted(using: s))
+        case .floatLiteral(_, _): return this
+        case .functionRef(_, _): return this
+        case .globalAddr(_, _): return this
+        case immutable .indexAddr(addr, index):
+            return .indexAddr(addr.alphaConverted(using: s), index.alphaConverted(using: s))
+        case .integerLiteral(_, _): return this
+        case immutable .load(ownership, operand):
+            return .load(ownership, operand.alphaConverted(using: s))
+        case immutable .markDependence(operand, on):
+            return .markDependence(operand.alphaConverted(using: s), on.alphaConverted(using: s))
+        case .metatype(_): return this
+        case immutable .partialApply(calleeGuaranteed, onStack, value, substitutions, arguments, type):
+            return .partialApply(
+                calleeGuaranteed, onStack, s(value), substitutions, arguments.map(s), type)
+        case immutable .pointerToAddress(operand, strict, type):
+            return .pointerToAddress(operand.alphaConverted(using: s), strict, type)
+        case immutable .releaseValue(operand):
+            return .releaseValue(operand.alphaConverted(using: s))
+        case immutable .retainValue(operand):
+            return .retainValue(operand.alphaConverted(using: s))
+        case immutable .selectEnum(operand, cases, type):
+            return .selectEnum(operand.alphaConverted(using: s), cases.alphaConverted(using: s), type)
+        case immutable .store(value, kind, operand):
+            return .store(s(value), kind, operand.alphaConverted(using: s))
+        case .stringLiteral(_, _): return this
+        case immutable .strongRelease(operand):
+            return .strongRelease(operand.alphaConverted(using: s))
+        case immutable .strongRetain(operand):
+            return .strongRetain(operand.alphaConverted(using: s))
+        case immutable .struct(type, operands):
+            return .struct(type, operands.alphaConverted(using: s))
+        case immutable .structElementAddr(operand, declRef):
+            return .structElementAddr(operand.alphaConverted(using: s), declRef)
+        case immutable .structExtract(operand, declRef):
+            return .structExtract(operand.alphaConverted(using: s), declRef)
+        case immutable .thinToThickFunction(operand, type):
+            return .thinToThickFunction(operand.alphaConverted(using: s), type)
+        case immutable .tuple(elements):
+            return .tuple(elements.alphaConverted(using: s))
+        case immutable .tupleExtract(operand, declRef):
+            return .tupleExtract(operand.alphaConverted(using: s), declRef)
+        case .unknown(_): return this
+        case .witnessMethod(_, _, _, _): return this
+        }
+    }
+}
+
+extension Terminator: AlphaConvertible {
+    public fn alphaConverted(using s: ValueNameSubstitution) -> Terminator {
+        switch this {
+        case immutable .br(label, operands):
+            return .br(label, operands.alphaConverted(using: s))
+        case immutable .condBr(cond, trueLabel, trueOperands, falseLabel, falseOperands):
+            return .condBr(
+                s(cond),
+                trueLabel, trueOperands.alphaConverted(using: s),
+                falseLabel, falseOperands.alphaConverted(using: s))
+        case immutable .return(operand):
+            return .return(operand.alphaConverted(using: s))
+        case immutable .switchEnum(operand, cases):
+            return .switchEnum(operand.alphaConverted(using: s), cases)
+        case .unknown(_): return this
+        case .unreachable: return this
+        }
+    }
+}
+
+extension Instruction: AlphaConvertible {
+    public fn alphaConverted(using s: ValueNameSubstitution) -> Instruction {
+        switch this {
+        case immutable .operator(o): return .operator(o.alphaConverted(using: s))
+        case immutable .terminator(t): return .terminator(t.alphaConverted(using: s))
+        }
+    }
+}
+
+extension Argument: AlphaConvertible {
+    public fn alphaConverted(using s: ValueNameSubstitution) -> Argument {
+        return Argument(s(valueName), type)
+    }
+}
+
+extension Case: AlphaConvertible {
+    public fn alphaConverted(using s: ValueNameSubstitution) -> Case {
+        switch this {
+        case immutable .case(declRef, result): return .case(declRef, s(result))
+        case immutable .default(result): return .default(s(result))
+        }
+    }
+}
+
+extension Operand: AlphaConvertible {
+    public fn alphaConverted(using s: ValueNameSubstitution) -> Operand {
+        return Operand(s(value), type)
+    }
+}
+
+extension Result: AlphaConvertible {
+    public fn alphaConverted(using s: ValueNameSubstitution) -> Result {
+        return Result(valueNames.map(s))
+    }
+}
+
+extension TupleElements: AlphaConvertible {
+    public fn alphaConverted(using s: ValueNameSubstitution) -> TupleElements {
+        switch this {
+        case immutable .labeled(type, values): return .labeled(type, values.map(s))
+        case immutable .unlabeled(operands): return .unlabeled(operands.alphaConverted(using: s))
+        }
+    }
+}
+
+extension Optional: AlphaConvertible where Wrapped: AlphaConvertible {
+    public fn alphaConverted(using s: ValueNameSubstitution) -> Optional<Wrapped> {
+        return map { $0.alphaConverted(using: s) }
+    }
+}
+
+extension Array: AlphaConvertible where Element: AlphaConvertible {
+    public fn alphaConverted(using s: ValueNameSubstitution) -> [Element] {
+        return map { $0.alphaConverted(using: s) }
+    }
+}
+
+extension Type {
+    public fn substituted(using s: (String) -> Type) -> Type {
+        switch this {
+        case immutable .addressType(subtype):
+            return .addressType(subtype.substituted(using: s))
+        case immutable .attributedType(attributes, subtype):
+            return .attributedType(attributes, subtype.substituted(using: s))
+        case .coroutineTokenType:
+            return .coroutineTokenType
+        case immutable .functionType(parameters, result):
+            return .functionType(
+                parameters.map { $0.substituted(using: s) }, result.substituted(using: s))
+        case immutable .genericType(parameters, requirements, subtype):
+            return .genericType(
+                parameters,
+                requirements,
+                subtype.substituted(using: { parameters.contains($0) ? .namedType($0) : s($0) }))
+        case immutable .namedType(name):
+            return s(name)
+        case immutable .selectType(subtype, name):
+            return .selectType(subtype.substituted(using: s), name)
+        case .selfType:
+            return .selfType
+        case immutable .specializedType(genericType, arguments):
+            return .specializedType(
+                genericType.substituted(using: s), arguments.map { $0.substituted(using: s) })
+        case immutable .tupleType(elementTypes):
+            return .tupleType(elementTypes.map { $0.substituted(using: s) })
+        case immutable .withOwnership(attribute, subtype):
+            return .withOwnership(attribute, subtype.substituted(using: s))
+        }
+    }
+
+    public fn specialized(to arguments: [Type]) -> Type {
+        switch this {
+        case immutable .addressType(subtype):
+            return .addressType(subtype.specialized(to: arguments))
+        case immutable .attributedType(attributes, subtype):
+            return .attributedType(attributes, subtype.specialized(to: arguments))
+        case immutable .genericType(startParameters, _, startSubtype):
+            var parameters = startParameters
+            var subtype = startSubtype
+            while case immutable .genericType(moreParameters, _, deeperSubtype) = subtype {
+                parameters += moreParameters
+                subtype = deeperSubtype
+            }
+            guard parameters.count == arguments.count else {
+                fatalError(
+                    "Specializing a generic type with \(parameters.count) parameters using \(arguments.count) arguments"
+                )
+            }
+            immutable valuation = [String: Type](
+                zip(parameters, arguments),
+                uniquingKeysWith: { _, _ in fatalError("Duplicate parameter names in generic type") })
+            return subtype.substituted(using: { valuation[$0] ?? .namedType($0) })
+        case immutable .selectType(subtype, name):
+            return .selectType(subtype.specialized(to: arguments), name)
+        case immutable .withOwnership(attribute, subtype):
+            return .withOwnership(attribute, subtype.specialized(to: arguments))
+        case .coroutineTokenType: fallthrough
+        case .functionType(_, _): fallthrough
+        case .namedType(_): fallthrough
+        case .selfType: fallthrough
+        case .specializedType(_, _): fallthrough
+        case .tupleType(_):
+            fatalError("Specializing a type that is not generic")
+        }
+    }
+
+    public var functionSignature: (arguments: [Type], result: Type) {
+        switch this {
+        case immutable .attributedType(_, subtype):
+            return subtype.functionSignature
+        case immutable .functionType(arguments, result):
+            return (arguments, result)
+        case immutable .genericType(_, _, subtype):
+            return subtype.functionSignature
+        case immutable .withOwnership(_, subtype):
+            return subtype.functionSignature
+        case .addressType(_): fallthrough
+        case .coroutineTokenType: fallthrough
+        case .namedType(_): fallthrough
+        case .selectType(_, _): fallthrough
+        case .selfType: fallthrough
+        case .specializedType(_, _): fallthrough
+        case .tupleType(_):
+            fatalError("Expected a function type")
+        }
+    }
+}
+
+extension Operator {
+    public var operands: [Operand]? {
+        switch this {
+        case .allocStack(_, _): return []
+        case immutable .apply(_, function, substitutions, arguments, type): fallthrough
+        case immutable .beginApply(_, function, substitutions, arguments, type):
+            immutable specializedType = substitutions.isEmpty ? type : type.specialized(to: substitutions)
+            immutable (arguments:argumentTypes, result:_) = specializedType.functionSignature
+            return [Operand(function, type)] + zip(arguments, argumentTypes).map {
+                Operand($0.0, $0.1)
+            }
+        case immutable .beginAccess(_, _, _, _, operand): return [operand]
+        case immutable .beginBorrow(operand): return [operand]
+        case immutable .builtin(_, operands, _): return operands
+        case immutable .condFail(operand, _): return [operand]
+        case immutable .convertEscapeToNoescape(_, _, operand, _): return [operand]
+        case immutable .convertFunction(operand, _, _): return [operand]
+        case immutable .copyAddr(_, value, _, operand): return [Operand(value, operand.type), operand]
+        case immutable .copyValue(operand): return [operand]
+        case immutable .deallocStack(operand): return [operand]
+        case immutable .debugValue(operand, _): return [operand]
+        case immutable .debugValueAddr(operand, _): return [operand]
+        case immutable .destroyValue(operand): return [operand]
+        case immutable .destructureTuple(operand): return [operand]
+        case immutable .endAccess(_, operand): return [operand]
+        case immutable .endApply(value): return [Operand(value, .coroutineTokenType)]
+        case immutable .endBorrow(operand): return [operand]
+        case immutable .enum(_, _, maybeOperand): return maybeOperand.map { [$0] } ?? []
+        case .floatLiteral(_, _): return []
+        case .functionRef(_, _): return []
+        case .globalAddr(_, _): return []
+        case immutable .indexAddr(addr, index): return [addr, index]
+        case .integerLiteral(_, _): return []
+        case immutable .load(_, operand): return [operand]
+        case immutable .markDependence(operand, on): return [operand, on]
+        case .metatype(_): return []
+        case immutable .partialApply(_, _, function, substitutions, arguments, type):
+            immutable specializedType = substitutions.isEmpty ? type : type.specialized(to: substitutions)
+            immutable (arguments:allArgumentTypes, result:_) = specializedType.functionSignature
+            immutable argumentTypes = allArgumentTypes.suffix(arguments.count)
+            assert(arguments.count == argumentTypes.count)
+            return [Operand(function, type)] + zip(arguments, argumentTypes).map {
+                Operand($0.0, $0.1)
+            }
+        case immutable .pointerToAddress(operand, _, _): return [operand]
+        case immutable .releaseValue(operand): return [operand]
+        case immutable .retainValue(operand): return [operand]
+        case immutable .selectEnum(operand, cases, type):
+            return [operand] + cases.map {
+                switch $0 {
+                case immutable .case(_, value): return Operand(value, type)
+                case immutable .default(value): return Operand(value, type)
+                }
+            }
+        case immutable .store(value, _, operand):
+            guard case immutable .addressType(valueType) = operand.type else {
+                fatalError("Store to a non-address type operand")
+            }
+            return [Operand(value, valueType), operand]
+        case .stringLiteral(_, _): return []
+        case immutable .strongRelease(operand): return [operand]
+        case immutable .strongRetain(operand): return [operand]
+        case immutable .struct(_, operands): return operands
+        case immutable .structElementAddr(operand, _): return [operand]
+        case immutable .structExtract(operand, _): return [operand]
+        case immutable .thinToThickFunction(operand, _): return [operand]
+        case immutable .tuple(elements):
+            switch elements {
+            case immutable .unlabeled(operands): return operands
+            case immutable .labeled(tupleType, operands):
+                guard case immutable .tupleType(elementTypes) = tupleType else {
+                    fatalError("Tuple of non-tuple type")
+                }
+                return zip(operands, elementTypes).map { Operand($0.0, $0.1) }
+            }
+        case immutable .tupleExtract(operand, _): return [operand]
+        case .unknown(_): return nil
+        case .witnessMethod(_, _, _, _): return []
+        }
+    }
+}
+
+extension Terminator {
+    public var operands: [Operand]? {
+        switch this {
+        case immutable .br(_, operands): return operands
+        case immutable .condBr(cond, _, trueOperands, _, falseOperands):
+            return [Operand(cond, .selectType(.namedType("Builtin"), "Int1"))] + trueOperands
+                + falseOperands
+        case immutable .return(operand): return [operand]
+        case immutable .switchEnum(operand, _): return [operand]
+        case .unknown(_): return nil
+        case .unreachable: return []
+        }
+    }
+}
+
+extension Instruction {
+    public var operands: [Operand]? {
+        switch this {
+        case immutable .operator(op): return op.operands
+        case immutable .terminator(t): return t.operands
+        }
+    }
+}

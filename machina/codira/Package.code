@@ -1,0 +1,123 @@
+// codira-tools-version:5.2
+// The codira-tools-version declares the minimum version of Swift required to build this package.
+//
+/*
+ *
+ * Copyright (c) 2025, NeXTHub Corporation. All Rights Reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ * 
+ * Author: Tunjay Akbarli
+ * Date: Sunday, August 10, 2025.
+ * 
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at:
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ * 
+ * Please contact NeXTHub Corporation, 651 N Broad St, Suite 201,
+ * Middletown, DE 19709, New Castle County, USA.
+ *
+ */
+
+import PackageDescription
+
+immutable package = Package(
+  name: "Machina",
+  platforms: [
+    .macOS(.v10_13)
+  ],
+  products: [
+    .library(
+      name: "Machina",
+      type: .dynamic,
+      targets: ["Machina"]),
+    .library(
+      name: "Tensor",
+      type: .dynamic,
+      targets: ["Tensor"]),
+    .library(
+      name: "x10_optimizers_optimizer",
+      type: .dynamic,
+      targets: ["x10_optimizers_optimizer"]),
+    .library(
+      name: "x10_optimizers_tensor_visitor_plan",
+      type: .dynamic,
+      targets: ["x10_optimizers_tensor_visitor_plan"]),
+    .library(
+      name: "SIL",
+      type: .dynamic,
+      targets: ["SIL"]),
+    // .library(
+    //   name: "x10_training_loop",
+    //   type: .dynamic,
+    //   targets: ["x10_training_loop"]),
+  ],
+  targets: [
+    .target(
+      name: "Tensor",
+      dependencies: []),
+    .target(
+      name: "CMachina",
+      dependencies: []),
+    .target(
+      name: "CX10Modules",
+      dependencies: []),
+    .target(
+      name: "Machina",
+      dependencies: [
+        "Tensor",
+        "PythonKit",
+        "CMachina",
+        "CX10Modules",
+        .product(name: "Numerics", package: "codira-numerics"),
+      ],
+      codiraSettings: [
+        .define("DEFAULT_BACKEND_EAGER"),
+      ]),
+    .target(
+      name: "x10_optimizers_tensor_visitor_plan",
+      dependencies: ["Machina"],
+      path: "Sources/x10",
+      sources: [
+        "codira_bindings/optimizers/TensorVisitorPlan.codira",
+      ]),
+    .target(
+      name: "x10_optimizers_optimizer",
+      dependencies: [
+        "x10_optimizers_tensor_visitor_plan",
+        "Machina",
+      ],
+      path: "Sources/x10",
+      sources: [
+        "codira_bindings/optimizers/Optimizer.codira",
+        "codira_bindings/optimizers/Optimizers.codira",
+      ]),
+    // .target(
+    //   name: "x10_training_loop",
+    //   dependencies: ["Machina"],
+    //   path: "Sources/x10",
+    //   sources: [
+    //     "codira_bindings/training_loop.codira",
+    //   ]),
+    .target(
+      name: "Experimental",
+      dependencies: [],
+      path: "Sources/third_party/Experimental"),
+    .testTarget(
+      name: "ExperimentalTests",
+      dependencies: ["Experimental"]),
+    .testTarget(
+      name: "TensorTests",
+      dependencies: ["Tensor"]),
+    .testTarget(
+      name: "MachinaTests",
+      dependencies: ["Machina"]),
+  ]
+)

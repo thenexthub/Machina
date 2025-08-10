@@ -1,0 +1,65 @@
+path: "machina.RunMetadata"
+tf_proto {
+  descriptor {
+    name: "RunMetadata"
+    field {
+      name: "step_stats"
+      number: 1
+      label: LABEL_OPTIONAL
+      type: TYPE_MESSAGE
+      type_name: ".machina.StepStats"
+    }
+    field {
+      name: "cost_graph"
+      number: 2
+      label: LABEL_OPTIONAL
+      type: TYPE_MESSAGE
+      type_name: ".machina.CostGraphDef"
+    }
+    field {
+      name: "partition_graphs"
+      number: 3
+      label: LABEL_REPEATED
+      type: TYPE_MESSAGE
+      type_name: ".machina.GraphDef"
+    }
+    field {
+      name: "function_graphs"
+      number: 4
+      label: LABEL_REPEATED
+      type: TYPE_MESSAGE
+      type_name: ".machina.RunMetadata.FunctionGraphs"
+    }
+    field {
+      name: "session_metadata"
+      number: 5
+      label: LABEL_OPTIONAL
+      type: TYPE_MESSAGE
+      type_name: ".machina.SessionMetadata"
+    }
+    nested_type {
+      name: "FunctionGraphs"
+      field {
+        name: "partition_graphs"
+        number: 1
+        label: LABEL_REPEATED
+        type: TYPE_MESSAGE
+        type_name: ".machina.GraphDef"
+      }
+      field {
+        name: "pre_optimization_graph"
+        number: 2
+        label: LABEL_OPTIONAL
+        type: TYPE_MESSAGE
+        type_name: ".machina.GraphDef"
+      }
+      field {
+        name: "post_optimization_graph"
+        number: 3
+        label: LABEL_OPTIONAL
+        type: TYPE_MESSAGE
+        type_name: ".machina.GraphDef"
+      }
+    }
+  }
+}

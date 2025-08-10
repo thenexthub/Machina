@@ -1,0 +1,14 @@
+path: "machina.data.experimental.ServiceOptions"
+tf_class {
+  is_instance: "<class \'machina.python.data.ops.options.ServiceOptions\'>"
+  is_instance: "<class \'machina.python.data.util.options.OptionsBase\'>"
+  is_instance: "<type \'object\'>"
+  member {
+    name: "pinned"
+    mtype: "<type \'property\'>"
+  }
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+}

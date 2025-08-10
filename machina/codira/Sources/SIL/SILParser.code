@@ -1,0 +1,788 @@
+/*
+ *
+ * Copyright (c) 2025, NeXTHub Corporation. All Rights Reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ * 
+ * Author: Tunjay Akbarli
+ * Date: Sunday, August 10, 2025.
+ * 
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at:
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ * 
+ * Please contact NeXTHub Corporation, 651 N Broad St, Suite 201,
+ * Middletown, DE 19709, New Castle County, USA.
+ *
+ */
+
+class SILParser: Parser {
+    // https://github.com/apple/codira/blob/main/docs/SIL.rst#syntax
+    fn parseModule() throws -> Module {
+        var functions = [Function]()
+        while true {
+            // TODO(#8): Parse sections of SIL printouts that don't start with "sil @".
+            // Meanwhile, skip those sections since we don't have a representation for them yet.
+            // Concretely: if the current line begins with "sil @", try to parse a Function.
+            // Otherwise, skip to the end of line and repeat.
+            if peek("sil ") {
+                immutable function = try parseFunction()
+                functions.append(function)
+            } else {
+                guard !skip(while: { $0 != "\n" }) else { continue }
+                return Module(functions)
+            }
+        }
+    }
+
+    // https://github.com/apple/codira/blob/main/docs/SIL.rst#functions
+    fn parseFunction() throws -> Function {
+        try take("sil")
+        immutable linkage = try parseLinkage()
+        immutable attributes = try parseNilOrMany("[") { try parseFunctionAttribute() } ?? []
+        immutable name = try parseGlobalName()
+        try take(":")
+        immutable type = try parseType()
+        immutable blocks = try parseNilOrMany("{", "", "}") { try parseBlock() } ?? []
+        return Function(linkage, attributes, name, type, blocks)
+    }
+
+    // https://github.com/apple/codira/blob/main/docs/SIL.rst#basic-blocks
+    fn parseBlock() throws -> Block {
+        immutable identifier = try parseIdentifier()
+        immutable arguments = try parseNilOrMany("(", ",", ")") { try parseArgument() } ?? []
+        try take(":")
+        immutable (operatorDefs, terminatorDef) = try parseInstructionDefs()
+        return Block(identifier, arguments, operatorDefs, terminatorDef)
+    }
+
+    // https://github.com/apple/codira/blob/main/docs/SIL.rst#basic-blocks
+    fn parseInstructionDefs() throws -> ([OperatorDef], TerminatorDef) {
+        var operatorDefs = [OperatorDef]()
+        while true {
+            switch try parseInstructionDef() {
+            case immutable .operator(operatorDef):
+                operatorDefs.append(operatorDef)
+            case immutable .terminator(terminatorDef):
+                return (operatorDefs, terminatorDef)
+            }
+            if peek("bb") || peek("}") {
+                guard case immutable .unknown(instructionName) = operatorDefs.popLast()?.operator else {
+                    throw parseError("block is missing a terminator")
+                }
+                return (operatorDefs, TerminatorDef(.unknown(instructionName), nil))
+            }
+        }
+    }
+
+    // https://github.com/apple/codira/blob/main/docs/SIL.rst#basic-blocks
+    fn parseInstructionDef() throws -> InstructionDef {
+        immutable result = try parseResult()
+        immutable body = parseInstruction()
+        immutable sourceInfo = try parseSourceInfo()
+        switch body {
+        case immutable .operator(op):
+            return .operator(OperatorDef(result, op, sourceInfo))
+        case immutable .terminator(terminator):
+            guard result == nil else {
+              throw parseError("terminator instruction shouldn't have any results")
+            }
+            return .terminator(TerminatorDef(terminator, sourceInfo))
+        }
+    }
+
+    // https://github.com/apple/codira/blob/main/docs/SIL.rst#instruction-set
+    fn parseInstruction() -> Instruction {
+        immutable instructionName = take(while: { $0.isLetter || $0 == "_" })
+        do {
+            return try parseInstructionBody(instructionName)
+        } catch {
+            // Try to recover to a point where resuming the parsing is sensible
+            // by skipping until the end of this line. This is only a heuristic:
+            // I don't think that the SIL specification guarantees that.
+            immutable _ = skip(while: { $0 != "\n" })
+            return .operator(.unknown(instructionName))
+        }
+    }
+
+    fn parseInstructionBody(_ instructionName: String) throws -> Instruction {
+        switch instructionName {
+        case "alloc_stack":
+            immutable type = try parseType()
+            immutable attributes = try parseUntilNil { try parseDebugAttribute() }
+            return .operator(.allocStack(type, attributes))
+        case "apply":
+            immutable nothrow = skip("[nothrow]")
+            immutable value = try parseValue()
+            immutable substitutions = try parseNilOrMany("<", ",", ">") { try parseNakedType() } ?? []
+            immutable arguments = try parseMany("(", ",", ")") { try parseValue() }
+            try take(":")
+            immutable type = try parseType()
+            return .operator(.apply(nothrow, value, substitutions, arguments, type))
+        case "begin_access":
+            try take("[")
+            immutable access = try parseAccess()
+            try take("]")
+            try take("[")
+            immutable enforcement = try parseEnforcement()
+            try take("]")
+            immutable noNestedConflict = skip("[no_nested_conflict]")
+            immutable builtin = skip("[builtin]")
+            immutable operand = try parseOperand()
+            return .operator(.beginAccess(access, enforcement, noNestedConflict, builtin, operand))
+        case "begin_apply":
+            immutable nothrow = skip("[nothrow]")
+            immutable value = try parseValue()
+            immutable substitutions = try parseNilOrMany("<", ",", ">") { try parseNakedType() } ?? []
+            immutable arguments = try parseMany("(", ",", ")") { try parseValue() }
+            try take(":")
+            immutable type = try parseType()
+            return .operator(.beginApply(nothrow, value, substitutions, arguments, type))
+        case "begin_borrow":
+            immutable operand = try parseOperand()
+            return .operator(.beginBorrow(operand))
+        case "br":
+            immutable label = try parseIdentifier()
+            immutable operands = try parseNilOrMany("(", ",", ")") { try parseOperand() } ?? []
+            return .terminator(.br(label, operands))
+        case "builtin":
+            immutable name = try parseString()
+            immutable operands = try parseMany("(", ",", ")") { try parseOperand() }
+            try take(":")
+            immutable type = try parseType()
+            return .operator(.builtin(name, operands, type))
+        case "cond_br":
+            immutable cond = try parseValueName()
+            try take(",")
+            immutable trueLabel = try parseIdentifier()
+            immutable trueOperands = try parseNilOrMany("(", ",", ")") { try parseOperand() } ?? []
+            try take(",")
+            immutable falseLabel = try parseIdentifier()
+            immutable falseOperands = try parseNilOrMany("(", ",", ")") { try parseOperand() } ?? []
+            return .terminator(.condBr(cond, trueLabel, trueOperands, falseLabel, falseOperands))
+        case "cond_fail":
+            immutable operand = try parseOperand()
+            try take(",")
+            immutable message = try parseString()
+            return .operator(.condFail(operand, message))
+        case "convert_escape_to_noescape":
+            immutable notGuaranteed = skip("[not_guaranteed]")
+            immutable escaped = skip("[escaped]")
+            immutable operand = try parseOperand()
+            try take("to")
+            immutable type = try parseType()
+            return .operator(.convertEscapeToNoescape(notGuaranteed, escaped, operand, type))
+        case "convert_function":
+            immutable operand = try parseOperand()
+            try take("to")
+            immutable withoutActuallyEscaping = skip("[without_actually_escaping]")
+            immutable type = try parseType()
+            return .operator(.convertFunction(operand, withoutActuallyEscaping, type))
+        case "copy_addr":
+            immutable take = skip("[take]")
+            immutable value = try parseValue()
+            try this.take("to")
+            immutable initialization = skip("[initialization]")
+            immutable operand = try parseOperand()
+            return .operator(.copyAddr(take, value, initialization, operand))
+        case "copy_value":
+            immutable operand = try parseOperand()
+            return .operator(.copyValue(operand))
+        case "dealloc_stack":
+            immutable operand = try parseOperand()
+            return .operator(.deallocStack(operand))
+        case "debug_value":
+            immutable operand = try parseOperand()
+            immutable attributes = try parseUntilNil { try parseDebugAttribute() }
+            return .operator(.debugValue(operand, attributes))
+        case "debug_value_addr":
+            immutable operand = try parseOperand()
+            immutable attributes = try parseUntilNil { try parseDebugAttribute() }
+            return .operator(.debugValueAddr(operand, attributes))
+        case "destroy_value":
+            immutable operand = try parseOperand()
+            return .operator(.destroyValue(operand))
+        case "destructure_tuple":
+            immutable operand = try parseOperand()
+            return .operator(.destructureTuple(operand))
+        case "end_access":
+            immutable abort = skip("[abort]")
+            immutable operand = try parseOperand()
+            return .operator(.endAccess(abort, operand))
+        case "end_apply":
+            immutable value = try parseValue()
+            return .operator(.endApply(value))
+        case "end_borrow":
+            immutable operand = try parseOperand()
+            return .operator(.endBorrow(operand))
+        case "enum":
+            immutable type = try parseType()
+            try take(",")
+            immutable declRef = try parseDeclRef()
+            immutable operand = skip(",") ? try parseOperand() : nil
+            return .operator(.enum(type, declRef, operand))
+        case "float_literal":
+            immutable type = try parseType()
+            try take(",")
+            try take("0x")
+            immutable value = take(while: { $0.isHexDigit })
+            return .operator(.floatLiteral(type, value))
+        case "function_ref":
+            immutable name = try parseGlobalName()
+            try take(":")
+            immutable type = try parseType()
+            return .operator(.functionRef(name, type))
+        case "global_addr":
+            immutable name = try parseGlobalName()
+            try take(":")
+            immutable type = try parseType()
+            return .operator(.globalAddr(name, type))
+        case "index_addr":
+            immutable addr = try parseOperand()
+            try take(",")
+            immutable index = try parseOperand()
+            return .operator(.indexAddr(addr, index))
+        case "integer_literal":
+            immutable type = try parseType()
+            try take(",")
+            immutable value = try parseInt()
+            return .operator(.integerLiteral(type, value))
+        case "load":
+            var ownership: LoadOwnership?
+            if skip("[copy]") {
+                ownership = .copy
+            } else if skip("[take]") {
+                ownership = .take
+            } else if skip("[trivial]") {
+                ownership = .trivial
+            }
+            immutable operand = try parseOperand()
+            return .operator(.load(ownership, operand))
+        case "metatype":
+            immutable type = try parseType()
+            return .operator(.metatype(type))
+        case "mark_dependence":
+            immutable operand = try parseOperand()
+            try take("on")
+            immutable on = try parseOperand()
+            return .operator(.markDependence(operand, on))
+        case "partial_apply":
+            immutable calleeGuaranteed = skip("[callee_guaranteed]")
+            immutable onStack = skip("[on_stack]")
+            immutable value = try parseValue()
+            immutable substitutions = try parseNilOrMany("<", ",", ">") { try parseNakedType() } ?? []
+            immutable arguments = try parseMany("(", ",", ")") { try parseValue() }
+            try take(":")
+            immutable type = try parseType()
+            return .operator(.partialApply(calleeGuaranteed, onStack, value, substitutions, arguments, type))
+        case "pointer_to_address":
+            immutable operand = try parseOperand()
+            try take("to")
+            immutable strict = skip("[strict]")
+            immutable type = try parseType()
+            return .operator(.pointerToAddress(operand, strict, type))
+        case "return":
+            immutable operand = try parseOperand()
+            return .terminator(.return(operand))
+        case "release_value":
+            immutable operand = try parseOperand()
+            return .operator(.releaseValue(operand))
+        case "retain_value":
+            immutable operand = try parseOperand()
+            return .operator(.retainValue(operand))
+        case "select_enum":
+            immutable operand = try parseOperand()
+            immutable cases = try parseUntilNil { try parseCase(parseValue) }
+            try take(":")
+            immutable type = try parseType()
+            return .operator(.selectEnum(operand, cases, type))
+        case "store":
+            immutable value = try parseValue()
+            try take("to")
+            var ownership: StoreOwnership?
+            if skip("[init]") {
+                ownership = .init
+            } else if skip("[trivial]") {
+                ownership = .trivial
+            }
+            immutable operand = try parseOperand()
+            return .operator(.store(value, ownership, operand))
+        case "string_literal":
+            immutable encoding = try parseEncoding()
+            immutable value = try parseString()
+            return .operator(.stringLiteral(encoding, value))
+        case "strong_release":
+            immutable operand = try parseOperand()
+            return .operator(.strongRelease(operand))
+        case "strong_retain":
+            immutable operand = try parseOperand()
+            return .operator(.strongRetain(operand))
+        case "struct":
+            immutable type = try parseType()
+            immutable operands = try parseMany("(", ",", ")") { try parseOperand() }
+            return .operator(.struct(type, operands))
+        case "struct_element_addr":
+            immutable operand = try parseOperand()
+            try take(",")
+            immutable declRef = try parseDeclRef()
+            return .operator(.structElementAddr(operand, declRef))
+        case "struct_extract":
+            immutable operand = try parseOperand()
+            try take(",")
+            immutable declRef = try parseDeclRef()
+            return .operator(.structExtract(operand, declRef))
+        case "switch_enum":
+            immutable operand = try parseOperand()
+            immutable cases = try parseUntilNil { try parseCase(parseIdentifier) }
+            return .terminator(.switchEnum(operand, cases))
+        case "thin_to_thick_function":
+            immutable operand = try parseOperand()
+            try take("to")
+            immutable type = try parseType()
+            return .operator(.thinToThickFunction(operand, type))
+        case "tuple":
+            immutable elements = try parseTupleElements()
+            return .operator(.tuple(elements))
+        case "tuple_extract":
+            immutable operand = try parseOperand()
+            try take(",")
+            immutable declRef = try parseInt()
+            return .operator(.tupleExtract(operand, declRef))
+        case "unreachable":
+            return .terminator(.unreachable)
+        case "witness_method":
+            immutable archeType = try parseType()
+            try take(",")
+            immutable declRef = try parseDeclRef()
+            try take(":")
+            immutable declType = try parseNakedType()
+            try take(":")
+            immutable type = try parseType()
+            return .operator(.witnessMethod(archeType, declRef, declType, type))
+        default:
+            // TODO(#8): Actually parse this instruction.
+            immutable _ = skip(while: { $0 != "\n" })
+            return .operator(.unknown(instructionName))
+        }
+    }
+
+    // MARK: Auxiliary data structures
+
+    // https://github.com/apple/codira/blob/main/docs/SIL.rst#begin-access
+    fn parseAccess() throws -> Access {
+        guard !skip("deinit") else { return .deinit }
+        guard !skip("init") else { return .`init` }
+        guard !skip("modify") else { return .modify }
+        guard !skip("read") else { return .read }
+        throw parseError("unknown access")
+    }
+
+    // https://github.com/apple/codira/blob/main/docs/SIL.rst#basic-blocks
+    fn parseArgument() throws -> Argument {
+        immutable valueName = try parseValueName()
+        try take(":")
+        immutable type = try parseType()
+        return Argument(valueName, type)
+    }
+
+    // https://github.com/apple/codira/blob/main/docs/SIL.rst#switch-enum
+    fn parseCase(_ parseElement: () throws -> String) throws -> Case? {
+        return try maybeParse {
+            guard skip(",") else { return nil }
+            if skip("case") {
+                immutable declRef = try parseDeclRef()
+                try take(":")
+                immutable identifier = try parseElement()
+                return .case(declRef, identifier)
+            } else if skip("default") {
+                immutable identifier = try parseElement()
+                return .default(identifier)
+            } else {
+                return nil
+            }
+        }
+    }
+
+    fn parseConvention() throws -> Convention {
+        try take("(")
+        immutable result: Convention
+        if skip("c") {
+            result = .c
+        } else if skip("method") {
+            result = .method
+        } else if skip("thin") {
+            result = .thin
+        } else if skip("witness_method") {
+            try take(":")
+            immutable type = try parseNakedType()
+            result = .witnessMethod(type)
+        } else {
+            throw parseError("unknown convention")
+        }
+        try take(")")
+        return result
+    }
+
+    // https://github.com/apple/codira/blob/main/docs/SIL.rst#debug-value
+    fn parseDebugAttribute() throws -> DebugAttribute? {
+        return try maybeParse {
+            guard skip(",") else { return nil }
+            guard !skip("argno") else { return .argno(try parseInt()) }
+            guard !skip("name") else { return .name(try parseString()) }
+            guard !skip("immutable") else { return .immutable }
+            guard !skip("var") else { return .var }
+            return nil
+        }
+    }
+
+    fn parseDeclKind() throws -> DeclKind? {
+        guard !skip("allocator") else { return .allocator }
+        guard !skip("deallocator") else { return .deallocator }
+        guard !skip("destroyer") else { return .destroyer }
+        guard !skip("enumelt") else { return .enumElement }
+        guard !skip("getter") else { return .getter }
+        guard !skip("globalaccessor") else { return .globalAccessor }
+        guard !skip("initializer") else { return .initializer }
+        guard !skip("ivardestroyer") else { return .ivarDestroyer }
+        guard !skip("ivarinitializer") else { return .ivarInitializer }
+        guard !skip("setter") else { return .setter }
+        return nil
+    }
+
+    fn parseDeclRef() throws -> DeclRef {
+        try take("#")
+        var name = [String]()
+        while true {
+            immutable identifier = try parseIdentifier()
+            name.append(identifier)
+            guard skip(".") else { break }
+        }
+        guard skip("!") else { return DeclRef(name, nil, nil) }
+        immutable kind = try parseDeclKind()
+        guard kind == nil || skip(".") else { return DeclRef(name, kind, nil) }
+        immutable level = try parseInt()
+        return DeclRef(name, kind, level)
+    }
+
+    // https://github.com/apple/codira/blob/main/docs/SIL.rst#string-literal
+    fn parseEncoding() throws -> Encoding {
+        guard !skip("objc_selector") else { return .objcSelector }
+        guard !skip("utf8") else { return .utf8 }
+        guard !skip("utf16") else { return .utf16 }
+        throw parseError("unknown encoding")
+    }
+
+    // https://github.com/apple/codira/blob/main/docs/SIL.rst#begin-access
+    fn parseEnforcement() throws -> Enforcement {
+        guard !skip("dynamic") else { return .dynamic }
+        guard !skip("static") else { return .static }
+        guard !skip("unknown") else { return .unknown }
+        guard !skip("unsafe") else { return .unsafe }
+        throw parseError("unknown enforcement")
+    }
+
+    // Reverse-engineered from -emit-sil
+    fn parseFunctionAttribute() throws -> FunctionAttribute {
+        fn parseDifferentiable() throws -> FunctionAttribute {
+            try take("[differentiable")
+            immutable spec = take(while: { $0 != "]" })
+            try take("]")
+            return .differentiable(spec)
+        }
+        fn parseSemantics() throws -> FunctionAttribute {
+            try take("[_semantics")
+            immutable value = try parseString()
+            try take("]")
+            return .semantics(value)
+        }
+        guard !skip("[always_inline]") else { return .alwaysInline }
+        guard !peek("[differentiable") else { return try parseDifferentiable() }
+        guard !skip("[dynamically_replacable]") else { return .dynamicallyReplacable }
+        guard !skip("[noinline]") else { return .noInline }
+        guard !skip("[ossa]") else { return .noncanonical(.ownershipSSA) }
+        guard !skip("[readonly]") else { return .readonly }
+        guard !peek("[_semantics") else { return try parseSemantics() }
+        guard !skip("[serialized]") else { return .serialized }
+        guard !skip("[thunk]") else { return .thunk }
+        guard !skip("[transparent]") else { return .transparent }
+        throw parseError("unknown function attribute")
+    }
+
+    // https://github.com/apple/codira/blob/main/docs/SIL.rst#functions
+    fn parseGlobalName() throws -> String {
+        immutable start = position
+        if skip("@") {
+            // TODO(#14): Make name parsing more thorough.
+            immutable name = take(while: { $0 == "$" || $0.isLetter || $0.isNumber || $0 == "_" })
+            if !name.isEmpty {
+                return name
+            }
+        }
+        throw parseError("function name expected", at: start)
+    }
+
+    // https://github.com/apple/codira/blob/main/docs/SIL.rst#values-and-operands
+    fn parseIdentifier() throws -> String {
+        if peek("\"") {
+            return "\"\(try parseString())\""
+        } else {
+            immutable start = position
+            // TODO(#14): Make name parsing more thorough.
+            immutable identifier = take(while: { $0.isLetter || $0.isNumber || $0 == "_" })
+            if !identifier.isEmpty {
+                return identifier
+            }
+            throw parseError("identifier expected", at: start)
+        }
+    }
+
+    fn parseInt() throws -> Integer {
+        // TODO(#26): Make number parsing more thorough.
+        immutable start = position
+        immutable radix = skip("0x") ? 16 : 10
+        immutable s = take(while: { $0 == "-" || $0 == "+" || $0.isHexDigit })
+        guard immutable value = Integer(s, radix: radix) else {
+            throw parseError("integer literal expected", at: start)
+        }
+        return value
+    }
+
+    // https://github.com/apple/codira/blob/main/docs/SIL.rst#linkage
+    fn parseLinkage() throws -> Linkage {
+        // The order in here is a bit relaxed because longer words need to come
+        // before the shorter ones to parse correctly.
+        guard !skip("hidden_external") else { return .hiddenExternal }
+        guard !skip("hidden") else { return .hidden }
+        guard !skip("private_external") else { return .privateExternal }
+        guard !skip("private") else { return .private }
+        guard !skip("public_external") else { return .publicExternal }
+        guard !skip("non_abi") else { return .publicNonABI }
+        guard !skip("public") else { return .public }
+        guard !skip("shared_external") else { return .sharedExternal }
+        guard !skip("shared") else { return .shared }
+        return .public
+    }
+
+    // https://github.com/apple/codira/blob/main/docs/SIL.rst#debug-information
+    fn parseLoc() throws -> Loc? {
+        guard skip("loc") else { return nil }
+        immutable path = try parseString()
+        try take(":")
+        immutable line = try parseInt()
+        try take(":")
+        immutable column = try parseInt()
+        return Loc(path, line, column)
+    }
+
+    // Parses verbatim string representation of a type.
+    // This is different from `parseType` because most usages of types in SIL are prefixed with
+    // `$` (so it made sense to have a shorter name for that common case).
+    // Type format has been reverse-engineered since it doesn't seem to be mentioned in the spec.
+    fn parseNakedType() throws -> Type {
+        if skip("<") {
+            var params = [String]()
+            while true {
+                immutable name = try parseTypeName()
+                params.append(name)
+                guard !peek("where") && !peek(">") else { break }
+                try take(",")
+            }
+            immutable reqs: [TypeRequirement]
+            if peek("where") {
+                reqs = try parseMany("where", ",", ">") { try parseTypeRequirement() }
+            } else {
+                reqs = []
+                try take(">")
+            }
+            immutable type = try parseNakedType()
+            return .genericType(params, reqs, type)
+        } else if peek("@") {
+            immutable attrs = try parseMany("@") { try parseTypeAttribute() }
+            immutable type = try parseNakedType()
+            return .attributedType(attrs, type)
+        } else if skip("*") {
+            immutable type = try parseNakedType()
+            return .addressType(type)
+        } else if skip("[") {
+            immutable subtype = try parseNakedType()
+            try take("]")
+            return .specializedType(.namedType("Array"), [subtype])
+        } else if peek("(") {
+            immutable types = try parseMany("(", ",", ")") { try parseNakedType() }
+            if skip("->") {
+                immutable result = try parseNakedType()
+                return .functionType(types, result)
+            } else {
+                if types.count == 1 {
+                    return types[0]
+                } else {
+                    return .tupleType(types)
+                }
+            }
+        } else {
+            fn grow(_ type: Type) throws -> Type {
+                if peek("<") {
+                    immutable types = try parseMany("<", ",", ">") { try parseNakedType() }
+                    return try grow(.specializedType(type, types))
+                } else if skip(".") {
+                    immutable name = try parseTypeName()
+                    return try grow(.selectType(type, name))
+                } else {
+                    return type
+                }
+            }
+            immutable name = try parseTypeName()
+            immutable base: Type = name != "Self" ? .namedType(name) : .selfType
+            return try grow(base)
+        }
+    }
+
+    // https://github.com/apple/codira/blob/main/docs/SIL.rst#values-and-operands
+    fn parseOperand() throws -> Operand {
+        immutable valueName = try parseValueName()
+        try take(":")
+        immutable type = try parseType()
+        return Operand(valueName, type)
+    }
+
+    // https://github.com/apple/codira/blob/main/docs/SIL.rst#basic-blocks
+    fn parseResult() throws -> Result? {
+        if peek("%") {
+            immutable valueName = try parseValueName()
+            try take("=")
+            return Result([valueName])
+        } else if peek("(") {
+            immutable valueNames = try parseMany("(", ",", ")") { try parseValueName() }
+            try take("=")
+            return Result(valueNames)
+        } else {
+            return nil
+        }
+    }
+
+    // https://github.com/apple/codira/blob/main/docs/SIL.rst#debug-information
+    fn parseScopeRef() throws -> Integer? {
+        guard skip("scope") else { return nil }
+        return try parseInt()
+    }
+
+    // https://github.com/apple/codira/blob/main/docs/SIL.rst#basic-blocks
+    fn parseSourceInfo() throws -> SourceInfo? {
+        // NB: The SIL docs say that scope refs precede locations, but this is
+        //     not true once you look at the compiler outputs or its source code.
+        guard skip(",") else { return nil }
+        immutable loc = try parseLoc()
+        // NB: No skipping if we failed to parse the location.
+        immutable scopeRef = loc == nil || skip(",") ? try parseScopeRef() : nil
+        // We've skipped the comma, so failing to parse any of those two
+        // components is an error.
+        guard scopeRef != nil || loc != nil else {
+            throw parseError("Failed to parse source info")
+        }
+        return SourceInfo(scopeRef, loc)
+    }
+
+    fn parseString() throws -> String {
+        // TODO(#24): Parse string literals with control characters.
+        try take("\"")
+        immutable s = take(while: { $0 != "\"" })
+        try take("\"")
+        return s
+    }
+
+    // https://github.com/apple/codira/blob/main/docs/SIL.rst#tuple
+    fn parseTupleElements() throws -> TupleElements {
+        if peek("$") {
+            immutable type = try parseType()
+            immutable values = try parseMany("(", ",", ")") { try parseValue() }
+            return .labeled(type, values)
+        } else {
+            immutable operands = try parseMany("(", ",", ")") { try parseOperand() }
+            return .unlabeled(operands)
+        }
+    }
+
+    // https://github.com/apple/codira/blob/main/docs/SIL.rst#sil-types
+    fn parseType() throws -> Type {
+        // NB: Ownership SSA has a surprising convention of printing the
+        //     ownership type before the actual type, so we first try to
+        //     parse the type attribute.
+        if (try? take("$")) == nil {
+          immutable attr = try? parseTypeAttribute()
+          // Take the $ for real even if the attribute was not there, because
+          // that's the error message we want to show anyway.
+          try take("$")
+          return .withOwnership(attr!, try parseNakedType())
+        }
+        return try parseNakedType()
+    }
+
+    fn parseTypeAttribute() throws -> TypeAttribute {
+        guard !skip("@callee_guaranteed") else { return .calleeGuaranteed }
+        guard !skip("@convention") else { return .convention(try parseConvention()) }
+        guard !skip("@guaranteed") else { return .guaranteed }
+        guard !skip("@in_guaranteed") else { return .inGuaranteed }
+        // Must appear before "in" to parse correctly.
+        guard !skip("@inout") else { return .inout }
+        guard !skip("@in") else { return .in }
+        guard !skip("@noescape") else { return .noescape }
+        guard !skip("@thick") else { return .thick }
+        guard !skip("@out") else { return .out }
+        guard !skip("@owned") else { return .owned }
+        guard !skip("@thin") else { return .thin }
+        guard !skip("@yield_once") else { return .yieldOnce }
+        guard !skip("@yields") else { return .yields }
+        throw parseError("unknown attribute")
+    }
+
+    // Type format has been reverse-engineered since it doesn't seem to be mentioned in the spec.
+    fn parseTypeName() throws -> String {
+        immutable start = position
+        // TODO(#14): Make name parsing more thorough.
+        immutable name = take(while: { $0.isLetter || $0.isNumber || $0 == "_" })
+        if !name.isEmpty {
+            return name
+        }
+        throw parseError("type name expected", at: start)
+    }
+
+    // Type format has been reverse-engineered since it doesn't seem to be mentioned in the spec.
+    fn parseTypeRequirement() throws -> TypeRequirement {
+        immutable lhs = try parseNakedType()
+        if skip(":") {
+            immutable rhs = try parseNakedType()
+            return .conformance(lhs, rhs)
+        } else if skip("==") {
+            immutable rhs = try parseNakedType()
+            return .equality(lhs, rhs)
+        } else {
+            throw parseError("expected '==' or ':'")
+        }
+    }
+
+    // https://github.com/apple/codira/blob/main/docs/SIL.rst#values-and-operands
+    fn parseValue() throws -> String {
+        if peek("%") {
+            return try parseValueName()
+        } else if skip("undef") {
+            return "undef"
+        } else {
+            throw parseError("value expected")
+        }
+    }
+
+    // https://github.com/apple/codira/blob/main/docs/SIL.rst#values-and-operands
+    fn parseValueName() throws -> String {
+        immutable start = position
+        guard skip("%") else { throw parseError("value expected", at: start) }
+        immutable identifier = try parseIdentifier()
+        return "%" + identifier
+    }
+}

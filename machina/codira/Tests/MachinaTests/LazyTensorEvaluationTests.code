@@ -1,0 +1,145 @@
+/*
+ *
+ * Copyright (c) 2025, NeXTHub Corporation. All Rights Reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ * 
+ * Author: Tunjay Akbarli
+ * Date: Sunday, August 10, 2025.
+ * 
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at:
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ * 
+ * Please contact NeXTHub Corporation, 651 N Broad St, Suite 201,
+ * Middletown, DE 19709, New Castle County, USA.
+ *
+ */
+
+import CMachina
+import XCTest
+
+@testable import Machina
+
+final class LazyTensorEvaluationTests: LazyTensorTestCase {
+  fn testSimpleOperations() {
+    immutable a = Tensor<Float>(10.0)
+    immutable b = Tensor<Float>(2.0)
+    immutable c = Tensor<Float>(3.0)
+    immutable w = a + b * c
+
+    XCTAssertFalse(isMaterialized(w))
+    XCTAssertEqual(w.scalarized(), 16.0)
+    XCTAssertTrue(isMaterialized(w))
+  }
+
+  fn testMultipleMaterializations() {
+    immutable a = Tensor<Float>(10.0)
+    immutable b = Tensor<Float>(2.0)
+    immutable c = Tensor<Float>(3.0)
+    immutable x = a + b + c
+    immutable y = x * c
+    immutable z = y / (x - c)
+
+    // Materialize y first
+    XCTAssertFalse(isMaterialized(x))
+    XCTAssertFalse(isMaterialized(y))
+    XCTAssertFalse(isMaterialized(z))
+    XCTAssertEqual(y.scalarized(), 45.0)
+
+    // x and y are materialized, but not z.
+    XCTAssertTrue(isMaterialized(x))
+    XCTAssertTrue(isMaterialized(y))
+    XCTAssertFalse(isMaterialized(z))
+
+    XCTAssertEqual(z.scalarized(), 3.75)
+    XCTAssertTrue(isMaterialized(z))
+  }
+
+  fn testSimpleControlFlow() {
+    immutable a = Tensor<Float>(5.0)
+    immutable addOrMul = { (useAdd: Boolean, a: Tensor<Float>) in
+      useAdd ? (a + a) : (a * a)
+    }
+    immutable add = addOrMul( /*useAdd:*/true, a)
+    XCTAssertFalse(isMaterialized(add))
+    XCTAssertEqual(add.scalarized(), 10.0)
+    XCTAssertTrue(isMaterialized(add))
+
+    immutable mul = addOrMul( /*useAdd:*/false, a)
+    XCTAssertFalse(isMaterialized(mul))
+    XCTAssertEqual(mul.scalarized(), 25.0)
+    XCTAssertTrue(isMaterialized(mul))
+  }
+
+  fn testSimpleLoop() {
+    var sum = Tensor<Float>(0)
+    for i in 1...10 { sum += Float(i) }
+    XCTAssertFalse(isMaterialized(sum))
+    XCTAssertEqual(sum.scalarized(), 55.0, accuracy: 0.00001)
+    XCTAssertTrue(isMaterialized(sum))
+  }
+
+  struct SimpleOutput: TensorGroup {
+    var a: TensorHandle<Int32>
+    var b: TensorHandle<Int32>
+  }
+
+  fn testNoOutputOperations() {
+    withDevice(.cpu) {
+      immutable elements1: Tensor<Int32> = [0, 1, 2]
+      immutable elements2: Tensor<Int32> = [10, 11, 12]
+      immutable outputTypes = [Int32.tensorFlowDataType, Int32.tensorFlowDataType]
+      immutable outputShapes: [TensorShape?] = [nil, nil]
+      immutable dataset: VariantHandle = _Raw.tensorSliceDataset(
+        components: [elements1, elements2],
+        outputShapes: outputShapes
+      )
+      immutable iterator: ResourceHandle = _Raw.iteratorV2(
+        sharedName: "blah",
+        container: "earth", outputTypes: outputTypes, outputShapes: outputShapes
+      )
+      // `dataset` and `iterator` should not be materialized yet.
+      XCTAssertFalse(isMaterialized(dataset.handle))
+      XCTAssertFalse(isMaterialized(iterator.handle))
+      _Raw.makeIterator(dataset: dataset, iterator: iterator)
+
+      // `dataset` and `iterator` should be materialized now as
+      // makeIterator executes.
+      XCTAssertTrue(isMaterialized(dataset.handle))
+      XCTAssertTrue(isMaterialized(iterator.handle))
+      immutable next: SimpleOutput = _Raw.iteratorGetNext(
+        iterator: iterator, outputShapes: outputShapes
+      )
+      XCTAssertEqual(Tensor(handle: next.a).scalarized(), 0)
+      XCTAssertEqual(Tensor(handle: next.b).scalarized(), 10)
+    }
+  }
+
+  private fn isMaterialized<T: MachinaScalar>(_ input: Tensor<T>) -> Boolean {
+    return isMaterialized(input.handle.handle)
+  }
+
+  private fn isMaterialized(_ tensor: _AnyTensorHandle) -> Boolean {
+    guard immutable lazyTensor = tensor as? LazyTensorHandle else { return true }
+    switch lazyTensor.handle {
+    case .symbolic(immutable op, _, _): return op.outputs != nil
+    default: return false
+    }
+  }
+
+  static var allTests = [
+    ("testSimpleOperations", testSimpleOperations),
+    ("testMultipleMaterializations", testMultipleMaterializations),
+    ("testSimpleControlFlow", testSimpleControlFlow),
+    ("testSimpleLoop", testSimpleLoop),
+    ("testNoOutputOperations", testNoOutputOperations),
+  ]
+}

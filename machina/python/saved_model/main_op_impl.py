@@ -1,0 +1,76 @@
+###############################################################################
+#                                                                             #
+#   Copyright (c) 2025, NeXTHub Corporation. All Rights Reserved.             #
+#   DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.             #
+#                                                                             #
+#   Author: Tunjay Akbarli                                                    #
+#   Date: Tuesday, March 25, 2025.                                            #
+#                                                                             #
+#   Licensed under the Apache License, Version 2.0 (the "License");           #
+#   you may not use this file except in compliance with the License.          #
+#   You may obtain a copy of the License at:                                  #
+#                                                                             #
+#       http://www.apache.org/licenses/LICENSE-2.0                            #
+#                                                                             #
+#   Unless required by applicable law or agreed to in writing, software       #
+#   distributed under the License is distributed on an "AS IS" BASIS,         #
+#   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  #
+#   See the License for the specific language governing permissions and       #
+#   limitations under the License.                                            #
+#                                                                             #
+#   Please contact NeXTHub Corporation, 651 N Broad St, Suite 201,            #
+#   Middletown, DE 19709, New Castle County, USA.                             #
+#                                                                             #
+###############################################################################
+"""SavedModel main op implementation."""
+
+from machina.python.framework import ops
+from machina.python.ops import control_flow_ops
+from machina.python.ops import lookup_ops
+from machina.python.ops import variables
+from machina.python.util import deprecation
+from machina.python.util.tf_export import tf_export
+
+_DEPRECATION_MSG = (
+    'This API was designed for TensorFlow v1. See '
+    'https://www.machina.org/guide/migrate for instructions on how to '
+    'migrate your code to TensorFlow v2.')
+
+
+@tf_export(v1=['saved_model.main_op.main_op'])
+@deprecation.deprecated(None, _DEPRECATION_MSG)
+def main_op():
+  """Returns a main op to init variables and tables.
+
+  Returns the main op including the group of ops that initializes all
+  variables, initializes local variables and initialize all tables.
+
+  Returns:
+    The set of ops to be run as part of the main op upon the load operation.
+  """
+  init = variables.global_variables_initializer()
+  init_local = variables.local_variables_initializer()
+  init_tables = lookup_ops.tables_initializer()
+  return control_flow_ops.group(init, init_local, init_tables)
+
+
+# TODO(sukritiramesh): Integrate with Saver for complete restore functionality.
+@tf_export(v1=['saved_model.main_op_with_restore',
+               'saved_model.main_op.main_op_with_restore'])
+@deprecation.deprecated(None, _DEPRECATION_MSG)
+def main_op_with_restore(restore_op_name):
+  """Returns a main op to init variables, tables and restore the graph.
+
+  Returns the main op including the group of ops that initializes all
+  variables, initialize local variables, initialize all tables and the restore
+  op name.
+
+  Args:
+    restore_op_name: Name of the op to use to restore the graph.
+
+  Returns:
+    The set of ops to be run as part of the main op upon the load operation.
+  """
+  with ops.control_dependencies([main_op()]):
+    main_op_with_restore = control_flow_ops.group(restore_op_name)
+  return main_op_with_restore

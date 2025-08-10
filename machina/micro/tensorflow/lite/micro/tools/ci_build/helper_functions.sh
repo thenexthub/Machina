@@ -1,0 +1,52 @@
+#!/usr/bin/env bash
+###############################################################################
+#                                                                             #
+#   Copyright (c) 2025, NeXTHub Corporation. All Rights Reserved.             #
+#   DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.             #
+#                                                                             #
+#   Author: Tunjay Akbarli                                                    #
+#   Date: Saturday, May 31, 2025.                                             #
+#                                                                             #
+#   Licensed under the Apache License, Version 2.0 (the "License");           #
+#   you may not use this file except in compliance with the License.          #
+#   You may obtain a copy of the License at:                                  #
+#                                                                             #
+#       http://www.apache.org/licenses/LICENSE-2.0                            #
+#                                                                             #
+#   Unless required by applicable law or agreed to in writing, software       #
+#   distributed under the License is distributed on an "AS IS" BASIS,         #
+#   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  #
+#   See the License for the specific language governing permissions and       #
+#   limitations under the License.                                            #
+#                                                                             #
+#   Please contact NeXTHub Corporation, 651 N Broad St, Suite 201,            #
+#   Middletown, DE 19709, New Castle County, USA.                             #
+#                                                                             #
+###############################################################################
+
+
+# Collection of helper functions that can be used in the different continuous
+# integration scripts.
+
+# A small utility to run the command and only print logs if the command fails.
+# On success, all logs are hidden. This helps to keep the log output clean and
+# makes debugging easier.
+function readable_run {
+  "$@" 2>&1
+  echo "Command completed successfully at $(date)"
+}
+
+# Check if the regex ${1} is to be found in the pathspec ${2}.
+# An optional error messsage can be passed with ${3}
+function check_contents() {
+  GREP_OUTPUT=$(git grep -E -rn ${1} -- ${2})
+
+  if [ "${GREP_OUTPUT}" ]; then
+    echo "=============================================="
+    echo "Found matches for ${1} that are not permitted."
+    echo "${3}"
+    echo "=============================================="
+    echo "${GREP_OUTPUT}"
+    return 1
+  fi
+}

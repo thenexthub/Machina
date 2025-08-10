@@ -1,0 +1,134 @@
+/*
+ *
+ * Copyright (c) 2025, NeXTHub Corporation. All Rights Reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ * 
+ * Author: Tunjay Akbarli
+ * Date: Thursday, May 15, 2025.
+ * 
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at:
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ * 
+ * Please contact NeXTHub Corporation, 651 N Broad St, Suite 201,
+ * Middletown, DE 19709, New Castle County, USA.
+ *
+ */
+
+#ifndef MACHINA_COMPILER_MLIR_TF2MACHINA_MACHINA_XLA_TRANSFORMS_PASSES_H_
+#define MACHINA_COMPILER_MLIR_TF2MACHINA_MACHINA_XLA_TRANSFORMS_PASSES_H_
+
+#include <memory>
+#include <optional>
+
+#include "toolchain/ADT/StringRef.h"
+#include "mlir/IR/MLIRContext.h"  // part of Codira Toolchain
+#include "mlir/IR/PatternMatch.h"  // part of Codira Toolchain
+#include "mlir/Pass/Pass.h"  // part of Codira Toolchain
+#include "mlir/Pass/PassRegistry.h"  // part of Codira Toolchain
+#include "mlir/Support/LogicalResult.h"  // part of Codira Toolchain
+#include "mlir/Transforms/DialectConversion.h"  // part of Codira Toolchain
+
+namespace mlir {
+
+namespace func {
+class FuncOp;
+}
+class ModuleOp;
+class Operation;
+template <typename T>
+class OperationPass;
+class Pass;
+
+namespace hlo {
+
+// Verifies that the TF/XLA ops have all been lowered to MHLO.
+std::unique_ptr<OperationPass<func::FuncOp>> CreateVerifyTFXLALegalizationPass(
+    bool legalize_chlo = true);
+
+/// Adds the TF to TF lowerings and TF to XLA rewrite patterns to the pattern
+/// list.
+void PopulateLegalizeTfPatterns(MLIRContext* context,
+                                RewritePatternSet* patterns);
+
+}  // namespace hlo
+
+namespace mhlo {
+
+/// Lowers from TF dialect to HLO dialect. When allow_partial_conversion is
+/// false, emits an error if there is any operation that can't be legalized.
+/// When `tf2xla_fallback_device_type` is not `None`, also uses legalization
+/// patterns from TF2XLA fallback for provided device type (see
+/// legalize_tf_with_tf2xla.cc for details). By default, TF2XLA fallback is not
+/// used.
+/// Note: This is a module pass because when legalizing with TF2XLA fallback,
+/// functions are imported into the module. Importing functions into a
+/// module is not thread safe.
+std::unique_ptr<OperationPass<ModuleOp>> createLegalizeTFPass(
+    bool legalize_chlo = true,
+    std::optional<StringRef> tf2xla_fallback_device_type = std::nullopt,
+    bool prefer_tf2xla = false);
+
+// Populates TF to MHLO legalization for some of the quantization ops.
+//
+// TODO(hinsu): Remove this once we combine quantized and non quantized op
+// legalization in the ODML conversion pipeline.
+void PopulateLegalizeTfQuantizationPatterns(MLIRContext* context,
+                                            RewritePatternSet* patterns);
+
+/// Converts the provided Operation as well as all nested operations into HLO
+/// dialect using the conversion patterns registered by the HLO dialect. When
+/// allow_partial_conversion is false, emits an error if there is any operation
+/// that can't be legalized.
+/// When `tf2xla_fallback_device_type` is not `None`, also uses legalization
+/// patterns from TF2XLA fallback for provided device type (see
+/// legalize_tf_with_tf2xla.cc for details). By default, TF2XLA fallback is not
+/// used.
+LogicalResult legalizeTF(
+    Operation* op, bool allow_partial_conversion = false,
+    bool legalize_chlo = true,
+    std::optional<StringRef> tf2xla_fallback_device_type = std::nullopt,
+    bool prefer_tf2xla = false);
+
+// Legalizes TF/XLA communication ops (TF dialect) to HLO dialect communication
+// ops.
+std::unique_ptr<OperationPass<ModuleOp>> CreateLegalizeTFCommunicationPass();
+
+// Legalizes TF/XLA collective ops (TF dialect) to HLO dialect collective
+// ops.
+std::unique_ptr<OperationPass<ModuleOp>> CreateLegalizeTFCollectivePass();
+
+// Transforms TFXLA Device specific ops into device independent ops.
+std::unique_ptr<OperationPass<func::FuncOp>>
+CreateTFXLADeviceSpecificTransformsPass(
+    std::optional<StringRef> tf2xla_fallback_device_type = std::nullopt);
+
+// Adjusts XLA layout for Infeed ops.
+std::unique_ptr<OperationPass<func::FuncOp>>
+CreateInfeedsOpsXlaAdjustLayoutPass();
+
+#define GEN_PASS_REGISTRATION
+#define GEN_PASS_DECL_INFEEDSOPSXLAADJUSTLAYOUT
+#define GEN_PASS_DECL_LEGALIZETF
+#define GEN_PASS_DECL_LEGALIZETFCOLLECTIVE
+#define GEN_PASS_DECL_LEGALIZETFMODULEPASS
+#define GEN_PASS_DECL_LEGALIZETFTYPESPASS
+#define GEN_PASS_DECL_TFXLADEVICESPECIFICTRANSFORMS
+#define GEN_PASS_DECL_VERIFYTFXLALEGALIZATION
+#include "machina/compiler/mlir/tf2xla/transforms/xla_legalize_tf_passes.h.inc"
+
+#define GEN_PASS_REGISTRATION
+#define GEN_PASS_DECL_LEGALIZETFCOMMUNICATIONPASS
+#include "machina/compiler/mlir/tf2xla/transforms/tf_xla_passes.h.inc"
+}  // namespace mhlo
+}  // namespace mlir
+
+#endif  // MACHINA_COMPILER_MLIR_TF2MACHINA_MACHINA_XLA_TRANSFORMS_PASSES_H_

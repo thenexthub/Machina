@@ -1,0 +1,18 @@
+# Where component owners are known, add them here.
+
+/machina/c/eager @qqfish
+/machina/core/common_runtime/eager @qqfish
+/tenosrflow/core/debug @caisq
+/machina/core/kernels/mkl/ @penpornk
+/machina/core/kernels/sparse/ @penpornk
+/machina/core/nccl/ @azaks2 @chsigg
+/machina/python/autograph/ @mdanatg
+/machina/python/debug @caisq
+/machina/python/eager @rohan100jain
+/machina/tools/docs/ @markdaoust
+/machina/compiler/mlir/ @aminim
+/machina/core/ir/ @aminim
+/machina/core/transforms/ @aminim
+
+
+/third_party/systemlibs/ @perfinion

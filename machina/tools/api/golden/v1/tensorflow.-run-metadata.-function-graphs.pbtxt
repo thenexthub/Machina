@@ -1,0 +1,27 @@
+path: "machina.RunMetadata.FunctionGraphs"
+tf_proto {
+  descriptor {
+    name: "FunctionGraphs"
+    field {
+      name: "partition_graphs"
+      number: 1
+      label: LABEL_REPEATED
+      type: TYPE_MESSAGE
+      type_name: ".machina.GraphDef"
+    }
+    field {
+      name: "pre_optimization_graph"
+      number: 2
+      label: LABEL_OPTIONAL
+      type: TYPE_MESSAGE
+      type_name: ".machina.GraphDef"
+    }
+    field {
+      name: "post_optimization_graph"
+      number: 3
+      label: LABEL_OPTIONAL
+      type: TYPE_MESSAGE
+      type_name: ".machina.GraphDef"
+    }
+  }
+}

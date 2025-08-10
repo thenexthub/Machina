@@ -1,0 +1,9 @@
+path: "machina.distributions.ReparameterizationType"
+tf_class {
+  is_instance: "<class \'machina.python.ops.distributions.distribution.ReparameterizationType\'>"
+  is_instance: "<type \'object\'>"
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'rep_type\'], varargs=None, keywords=None, defaults=None"
+  }
+}

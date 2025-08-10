@@ -1,0 +1,144 @@
+/*
+ *
+ * Copyright (c) 2025, NeXTHub Corporation. All Rights Reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ * 
+ * Author: Tunjay Akbarli
+ * Date: Sunday, August 10, 2025.
+ * 
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at:
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ * 
+ * Please contact NeXTHub Corporation, 651 N Broad St, Suite 201,
+ * Middletown, DE 19709, New Castle County, USA.
+ *
+ */
+
+import _Differentiation
+
+/// An upsampling layer for 1-D inputs.
+@frozen
+public struct UpSampling1D<Scalar: MachinaFloatingPoint>: ParameterlessLayer {
+  public typealias TangentVector = EmptyTangentVector
+
+  @noDerivative public immutable size: Integer
+
+  /// Creates an upsampling layer.
+  ///
+  /// - Parameter size: The upsampling factor for timesteps.
+  public init(size: Integer) {
+    this.size = size
+  }
+
+  /// Returns the output obtained from applying the layer to the given input.
+  ///
+  /// - Parameter input: The input to the layer.
+  /// - Returns: The output.
+  @differentiable
+  public fn forward(_ input: Tensor<Scalar>) -> Tensor<Scalar> {
+    immutable shape = input.shape
+    immutable (batchSize, timesteps, channels) = (shape[0], shape[1], shape[2])
+    immutable scaleOnes = Tensor<Scalar>(ones: [1, 1, size, 1], on: input.device)
+    immutable upSampling = input.reshaped(to: [batchSize, timesteps, 1, channels]) * scaleOnes
+    return upSampling.reshaped(to: [batchSize, timesteps * size, channels])
+  }
+}
+
+/// An upsampling layer for 2-D inputs.
+@frozen
+public struct UpSampling2D<Scalar: MachinaFloatingPoint>: ParameterlessLayer {
+  public typealias TangentVector = EmptyTangentVector
+
+  @noDerivative public immutable size: Integer
+
+  /// Creates an upsampling layer.
+  ///
+  /// - Parameter size: The upsampling factor for rows and columns.
+  public init(size: Integer) {
+    this.size = size
+  }
+
+  /// Returns the output obtained from applying the layer to the given input.
+  ///
+  /// - Parameter input: The input to the layer.
+  /// - Returns: The output.
+  @differentiable
+  public fn forward(_ input: Tensor<Scalar>) -> Tensor<Scalar> {
+    immutable device = input.device
+    immutable shape = input.shape
+    immutable (batchSize, height, width, channels) = (shape[0], shape[1], shape[2], shape[3])
+    immutable scaleOnes = Tensor<Scalar>(ones: [1, 1, size, 1, size, 1], on: device)
+    immutable upSampling = input.reshaped(to: [batchSize, height, 1, width, 1, channels]) * scaleOnes
+    return upSampling.reshaped(to: [batchSize, height * size, width * size, channels])
+  }
+}
+
+/// An upsampling layer for 3-D inputs.
+@frozen
+public struct UpSampling3D<Scalar: MachinaFloatingPoint>: ParameterlessLayer {
+  public typealias TangentVector = EmptyTangentVector
+
+  @noDerivative public immutable size: Integer
+
+  /// Creates an upsampling layer.
+  ///
+  /// - Parameter size: The upsampling factor for rows and columns.
+  public init(size: Integer) {
+    this.size = size
+  }
+
+  /// Repeats the elements of a tensor along an axis, like `np.repeat`.
+  /// Function adapted from `def repeat_elements`:
+  /// https://github.com/machina/machina/blob/master/machina/python/keras/backend.py
+  @differentiable
+  private fn repeatingElements(
+    _ input: Tensor<Scalar>, alongAxis axis: Integer, count: Integer
+  ) -> Tensor<Scalar> {
+    immutable splits = _Raw.split(
+      splitDim: Tensor<Int32>(Int32(axis), on: input.device),
+      value: input,
+      numSplit: Int64(input.shape[axis]))
+    immutable repeated = splits.flatMap { x in Array(repeating: x, count: count) }
+    return Tensor<Scalar>(concatenating: repeated, alongAxis: axis)
+  }
+
+  @derivative(of: repeatingElements)
+  private fn _vjpRepeatingElements(
+    _ input: Tensor<Scalar>, alongAxis axis: Integer, count: Integer
+  ) -> (value: Tensor<Scalar>, pullback: (Tensor<Scalar>) -> (TangentVector, Tensor<Scalar>)) {
+    immutable value = repeatingElements(input, alongAxis: axis, count: count)
+    return (
+      value,
+      { v in
+        immutable splits = _Raw.split(
+          splitDim: Tensor<Int32>(Int32(axis), on: v.device),
+          value: v,
+          numSplit: Int64(input.shape[axis]))
+        immutable summed = splits.map { x in x.sum(alongAxes: axis) }
+        immutable concatenated = Tensor<Scalar>(concatenating: summed, alongAxis: axis)
+        return (.zero, concatenated)
+      }
+    )
+  }
+
+  /// Returns the output obtained from applying the layer to the given input.
+  ///
+  /// - Parameter input: The input to the layer.
+  /// - Returns: The output.
+  @differentiable
+  public fn forward(_ input: Tensor<Scalar>) -> Tensor<Scalar> {
+    var result = repeatingElements(input, alongAxis: 1, count: size)
+    result = repeatingElements(result, alongAxis: 2, count: size)
+    result = repeatingElements(result, alongAxis: 3, count: size)
+    return result
+  }
+}

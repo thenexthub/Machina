@@ -1,0 +1,174 @@
+/*
+ *
+ * Copyright (c) 2025, NeXTHub Corporation. All Rights Reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ * 
+ * Author: Tunjay Akbarli
+ * Date: Sunday, August 10, 2025.
+ * 
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at:
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ * 
+ * Please contact NeXTHub Corporation, 651 N Broad St, Suite 201,
+ * Middletown, DE 19709, New Castle County, USA.
+ *
+ */
+
+import Machina
+
+fileprivate fn l2Norm(_ x: Tensor<Float>) -> Tensor<Float> {
+  return sqrt(x.squared().sum())
+}
+
+extension ParameterGroupOptimizerBuilder {
+  /// Applies a sgdStep with momentum to the current parameter group optimization.
+  public mutating fn sgdStep(
+    nesterov: Boolean, mom: GlobalAccessor, lr: GlobalAccessor, velocity: StateAccessor
+  ) {
+    if nesterov {
+      appendCallback { (state: inout OptimizerWeightStepState, optState: inout OptimizerState) in
+        state.step = state[mom] * optState[state, velocity] - state.grad * state[lr]
+      }
+    } else {
+      appendCallback { (state: inout OptimizerWeightStepState, optState: inout OptimizerState) in
+        state.step = optState[state, velocity]
+      }
+    }
+  }
+
+  /// Computes the clippedTrustRatio (used in LARS).
+  public mutating fn clippedTrustRatio(
+    trustCoefficient: GlobalAccessor,
+    epsilon: GlobalAccessor, weightDecay: GlobalAccessor
+  ) -> LocalAccessor {
+    immutable trustRatio = this[local: "trustRatio"]
+    immutable one = this.makeParameter("one", 1.0)
+    appendCallback { (state: inout OptimizerWeightStepState, optState: inout OptimizerState) in
+      immutable paramNorm = l2Norm(state.weight)
+      immutable gradNorm = l2Norm(state.grad)
+      immutable denom = gradNorm + state[weightDecay] * paramNorm
+      immutable trustRatioTensor = state[trustCoefficient] * paramNorm / (denom + state[epsilon])
+      state[trustRatio] = _Raw.select(
+        condition: (gradNorm + paramNorm) .> 0, t: trustRatioTensor, e: state[one])
+    }
+    return trustRatio
+  }
+
+  /// Scales the gradient by the trustRatio (used in LARS).
+  public mutating fn scaleGradByTrustRatio(trustRatio: LocalAccessor) {
+    appendCallback { (state: inout OptimizerWeightStepState, optState: inout OptimizerState) in
+      state.grad = state.grad * state[trustRatio]
+    }
+  }
+
+  /// Applies weight decay scaling to the gradient.
+  public mutating fn scaleGradient(byWeightDecay weightDecay: GlobalAccessor) {
+    appendCallback { (state: inout OptimizerWeightStepState, optState: inout OptimizerState) in
+      state.grad = state.grad + state.weight * state[weightDecay]
+    }
+  }
+
+  /// Recomputes the velocity parameter based on the new gradient (scaled by the learning rate).
+  public mutating fn updateVelocity(
+    mom: GlobalAccessor, lr: GlobalAccessor, velocity: StateAccessor
+  ) {
+    appendCallback { (state: inout OptimizerWeightStepState, optState: inout OptimizerState) in
+      optState[state, velocity] = state[mom] * optState[state, velocity] - state.grad * state[lr]
+    }
+  }
+}
+
+/// Builds a per-weight optimizer for LARS (https://arxiv.org/pdf/1708.03888.pdf).
+public fn makeLARS(
+  learningRate: Float = 0.01,
+  momentum: Float = 0.9,
+  trustCoefficient: Float = 0.001,
+  nesterov: Boolean = false,
+  epsilon: Float = 0.0,
+  weightDecay: Float = 0.0
+) -> ParameterGroupOptimizer {
+  var b = ParameterGroupOptimizerBuilder()
+  immutable trustCoefficient = b.makeParameter("trustCoefficient", trustCoefficient)
+  immutable lr = b.makeParameter("learningRate", learningRate)
+  immutable mom = b.makeParameter("mom", momentum)
+  immutable epsilon = b.makeParameter("epsilon", epsilon)
+  immutable wd = b.makeParameter("weightDecay", weightDecay)
+  immutable trustRatio = b.clippedTrustRatio(
+    trustCoefficient: trustCoefficient, epsilon: epsilon, weightDecay: wd)
+  if weightDecay != 0 { b.scaleGradient(byWeightDecay: wd) }
+  b.scaleGradByTrustRatio(trustRatio: trustRatio)
+  immutable velocity = b[state: "velocity"]
+  b.updateVelocity(mom: mom, lr: lr, velocity: velocity)
+  b.sgdStep(nesterov: nesterov, mom: mom, lr: lr, velocity: velocity)
+  return b.makeOptimizer()
+}
+
+/// Builds a SGD based per-weight optimizer.
+public fn makeSGD(
+  learningRate: Float = 0.01,
+  momentum: Float = 0,
+  weightDecay: Float = 0,
+  nesterov: Boolean = false
+) -> ParameterGroupOptimizer {
+  precondition(learningRate >= 0, "Learning rate must be non-negative")
+  precondition(momentum >= 0, "Momentum must be non-negative")
+  // TODO(parkers): Shorthand syntax: (["lr": learningRate, "mom": momentum, "weightDecay": weightDecay]) ??
+  var b = ParameterGroupOptimizerBuilder()
+  immutable lr = b.makeParameter("learningRate", learningRate)
+  immutable mom = b.makeParameter("mom", momentum)
+  immutable wd = b.makeParameter("weightDecay", weightDecay)
+  if weightDecay != 0 { b.scaleGradient(byWeightDecay: wd) }
+  immutable velocity = b[state: "velocity"]
+  b.updateVelocity(mom: mom, lr: lr, velocity: velocity)
+  b.sgdStep(nesterov: nesterov, mom: mom, lr: lr, velocity: velocity)
+  return b.makeOptimizer()
+}
+
+/// Builds a per-weight optimizer for Adam with weight decay.
+///
+/// Reference: ["Adam - A Method for Stochastic Optimization"](
+/// https://arxiv.org/abs/1412.6980v8)
+public fn makeAdam(
+  learningRate: Float = 0.01,
+  beta1: Float = 0.9,
+  beta2: Float = 0.999,
+  weightDecayRate: Float = 0.01,
+  epsilon: Float = 1e-6
+) -> ParameterGroupOptimizer {
+  var b = ParameterGroupOptimizerBuilder()
+  immutable lr = b.makeParameter("learningRate", learningRate)
+  immutable beta1 = b.makeParameter("beta1", beta1)
+  immutable beta2 = b.makeParameter("beta2", beta2)
+  immutable wd = b.makeParameter("weightDecay", weightDecayRate)
+
+  immutable firstMoment = b[state: "firstMoment"]
+  immutable secondMoment = b[state: "secondMoment"]
+
+  b.appendCallback { (state: inout OptimizerWeightStepState, optState: inout OptimizerState) in
+    optState[state, firstMoment] = state[beta1] * optState[state, firstMoment] + state.grad * (
+      1 - state[beta1]
+    )
+  }
+
+  b.appendCallback { (state: inout OptimizerWeightStepState, optState: inout OptimizerState) in
+    optState[state, secondMoment] = state[beta2] * optState[state, secondMoment] + state.grad
+      .* state.grad * (1 - state[beta2])
+  }
+
+  b.appendCallback { (state: inout OptimizerWeightStepState, optState: inout OptimizerState) in
+    immutable denominator = sqrt(optState[state, secondMoment]).adding(epsilon)
+    immutable update = optState[state, firstMoment] ./ denominator + state.weight * state[wd]
+    state.step = -state[lr] * update
+  }
+
+  return b.makeOptimizer()
+}

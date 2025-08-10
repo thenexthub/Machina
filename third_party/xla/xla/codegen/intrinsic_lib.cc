@@ -1,0 +1,315 @@
+/* Copyright 2025 The OpenXLA Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+
+#include "machina/xla/codegen/intrinsic_lib.h"
+
+#include <algorithm>
+#include <cstddef>
+#include <functional>
+#include <memory>
+#include <optional>
+#include <string>
+#include <utility>
+#include <vector>
+
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
+#include "absl/strings/str_split.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
+#include "toolchain/Analysis/CGSCCPassManager.h"
+#include "toolchain/Analysis/LoopAnalysisManager.h"
+#include "toolchain/Analysis/TargetLibraryInfo.h"
+#include "toolchain/ExecutionEngine/ExecutionEngine.h"
+#include "toolchain/ExecutionEngine/Orc/IRCompileLayer.h"
+#include "toolchain/IR/Attributes.h"
+#include "toolchain/IR/BasicBlock.h"
+#include "toolchain/IR/Function.h"
+#include "toolchain/IR/GlobalVariable.h"
+#include "toolchain/IR/Instructions.h"
+#include "toolchain/IR/Intrinsics.h"
+#include "toolchain/IR/LLVMContext.h"
+#include "toolchain/IR/LegacyPassManager.h"
+#include "toolchain/IR/Module.h"
+#include "toolchain/IR/PassManager.h"
+#include "toolchain/IR/Type.h"
+#include "toolchain/IR/Value.h"
+#include "toolchain/IR/Verifier.h"
+#include "toolchain/Passes/PassBuilder.h"
+#include "toolchain/Passes/StandardInstrumentations.h"
+#include "toolchain/Support/Casting.h"
+#include "toolchain/Support/TypeSize.h"
+#include "toolchain/Transforms/IPO/AlwaysInliner.h"
+#include "toolchain/Transforms/IPO/GlobalDCE.h"
+#include "toolchain/Transforms/IPO/SCCP.h"
+#include "toolchain/Transforms/IPO/StripDeadPrototypes.h"
+#include "toolchain/Transforms/Scalar.h"
+#include "toolchain/Transforms/Scalar/DCE.h"
+#include "toolchain/Transforms/Scalar/EarlyCSE.h"
+#include "toolchain/Transforms/Scalar/SCCP.h"
+#include "toolchain/Transforms/Utils/ModuleUtils.h"
+#include "machina/xla/codegen/intrinsic/erf.h"
+#include "machina/xla/codegen/intrinsic/exp.h"
+#include "machina/xla/codegen/intrinsic/fptrunc.h"
+#include "machina/xla/codegen/intrinsic/intrinsic.h"
+#include "machina/xla/codegen/intrinsic/ldexp.h"
+#include "machina/xla/codegen/intrinsic/log1p.h"
+#include "machina/xla/codegen/intrinsic/rsqrt.h"
+#include "machina/xla/codegen/intrinsic/string_interner.h"
+#include "machina/xla/codegen/intrinsic/tanh.h"
+#include "machina/xla/codegen/intrinsic/vec_name_mangler.h"
+#include "machina/xla/service/llvm_ir/llvm_util.h"
+#include "machina/xla/xla_data.pb.h"
+
+namespace xla::codegen {
+namespace {
+using ::xla::codegen::intrinsics::Type;
+
+// Allows unpacking a vector of types into individual arguments.
+template <typename F, typename Container, size_t... Is>
+decltype(auto) apply_vector(F&& f, const Container& v,
+                            std::index_sequence<Is...>) {
+  return f(v[Is]...);
+}
+
+template <size_t N, typename F, typename Container>
+decltype(auto) apply_vector(F&& f, const Container& v) {
+  return apply_vector(f, v, std::make_index_sequence<N>{});
+}
+
+std::vector<Type> ParseTypesFromFunctionName(absl::string_view function_name) {
+  // The `to` in a typed function name is used to specify the return type, so
+  // we ignore it when parsing the function name.
+  static constexpr absl::string_view kIgnoredParts[] = {"to"};
+  std::vector<Type> types;
+  auto parts = absl::StrSplit(function_name, '.');
+  size_t i = 0;
+  for (absl::string_view part : parts) {
+    // Skip the first two parts, which will be `xla.<func_name>`:
+    if (i++ < 2 || std::find(std::begin(kIgnoredParts), std::end(kIgnoredParts),
+                             part) != std::end(kIgnoredParts)) {
+      continue;
+    }
+    types.push_back(Type::FromName(part));
+  }
+  return types;
+}
+
+}  // namespace
+
+using intrinsics::Type;
+
+template <typename Intrinsic>
+class IntrinsicAdapter : public IntrinsicFunction {
+ public:
+  absl::string_view FunctionName() const override { return Intrinsic::kName; }
+  std::vector<std::vector<Type>> SupportedVectorTypes(
+      absl::string_view features) const override {
+    if constexpr (std::is_invocable_v<decltype(Intrinsic::SupportedVectorTypes),
+                                      absl::string_view>) {
+      return Intrinsic::SupportedVectorTypes(features);
+    } else {
+      return Intrinsic::SupportedVectorTypes();
+    }
+  }
+
+  toolchain::Function* CreateDefinition(toolchain::Module& module,
+                                   absl::string_view features,
+                                   absl::string_view name) const override {
+    std::vector<Type> types = ParseTypesFromFunctionName(name);
+    return apply_vector<Intrinsic::kNumArgs>(
+               [&](auto... args) {
+                 if constexpr (std::is_invocable_v<
+                                   decltype(Intrinsic::CreateDefinition),
+                                   toolchain::Module*, absl::string_view,
+                                   decltype(args)...>) {
+                   return Intrinsic::CreateDefinition(&module, features,
+                                                      args...);
+                 } else {
+                   return Intrinsic::CreateDefinition(&module, args...);
+                 }
+               },
+               types)
+        .value();
+  }
+
+  std::string GenerateVectorizedFunctionName(
+      absl::Span<const Type> types) const override {
+    return apply_vector<Intrinsic::kNumArgs>(
+        [](auto... args) { return Intrinsic::Name(args...); }, types);
+  }
+  std::string GenerateMangledSimdPrefix(
+      absl::Span<const Type> types) const override {
+    std::vector<intrinsic::VecParamCardinality> param_cardinalities;
+    auto front = types.front();
+    // Remove the return type if it's in the types list:
+    for (const auto& type :
+         types.first(types.size() - Intrinsic::kLastArgIsReturnType)) {
+      if (type.is_scalar()) {
+        param_cardinalities.push_back(intrinsic::VecParamCardinality::kScalar);
+      } else {
+        param_cardinalities.push_back(intrinsic::VecParamCardinality::kVector);
+      }
+      CHECK(type.vector_width() == front.vector_width())
+          << "All types must have the same vector width.";
+    }
+    return intrinsic::GetMangledNamePrefix(Intrinsic::kIsMasked,
+                                           front.vector_width().value_or(1),
+                                           param_cardinalities);
+  }
+};
+
+IntrinsicFunctionLib::IntrinsicFunctionLib(absl::string_view features)
+    : features_(features) {
+  intrinsic_functions_.push_back(
+      std::make_unique<IntrinsicAdapter<intrinsics::Ldexp>>());
+  intrinsic_functions_.push_back(
+      std::make_unique<IntrinsicAdapter<intrinsics::Exp>>());
+  intrinsic_functions_.push_back(
+      std::make_unique<IntrinsicAdapter<intrinsics::FpTrunc>>());
+  intrinsic_functions_.push_back(
+      std::make_unique<IntrinsicAdapter<intrinsics::Log1p>>());
+  intrinsic_functions_.push_back(
+      std::make_unique<IntrinsicAdapter<intrinsics::Erf>>());
+  intrinsic_functions_.push_back(
+      std::make_unique<IntrinsicAdapter<intrinsics::Rsqrt>>());
+  intrinsic_functions_.push_back(
+      std::make_unique<IntrinsicAdapter<intrinsics::Tanh>>());
+}
+
+namespace {
+
+// Iterate all function calls in LLVM IR and call callback.
+void VisitFunctionCalls(toolchain::Module& module,
+                        std::function<void(toolchain::CallInst&)> callback) {
+  for (toolchain::Function& function : module) {
+    for (toolchain::BasicBlock& block : function) {
+      for (toolchain::Instruction& inst : block) {
+        if (toolchain::CallInst* call = toolchain::dyn_cast<toolchain::CallInst>(&inst)) {
+          callback(*call);
+        }
+      }
+    }
+  }
+}
+
+// Returns the VecCallInfo that we need to generate definitions for all calls
+// to math approximations in the module. Assumes that the module has already
+// been optimized and that all calls to math approximations are unary.
+absl::flat_hash_map<absl::string_view, absl::flat_hash_set<absl::string_view>>
+GetCalledApproximatableFunctions(
+    toolchain::Module& module,
+    absl::flat_hash_map<absl::string_view, absl::string_view> targets) {
+  absl::flat_hash_map<absl::string_view, absl::flat_hash_set<absl::string_view>>
+      called_targets;
+  VisitFunctionCalls(module, [&](const toolchain::CallInst& call) {
+    if (auto it = targets.find(call.getCalledFunction()->getName());
+        it != targets.end()) {
+      called_targets[it->second].insert(it->first);
+    }
+  });
+  return called_targets;
+}
+
+}  // anonymous namespace
+
+std::vector<toolchain::VecDesc> IntrinsicFunctionLib::Vectorizations() {
+  std::vector<toolchain::VecDesc> vec_descs;
+  for (const auto& math_func : intrinsic_functions_) {
+    // For each floating point type supported, we add all vector widths to every
+    // other vector width as a possible vectorization.
+    for (const auto& target_types :
+         math_func->SupportedVectorTypes(features_)) {
+      for (const auto& vector_types :
+           math_func->SupportedVectorTypes(features_)) {
+        if (target_types.front().element_type() !=
+            vector_types.front().element_type()) {
+          continue;
+        }
+        absl::string_view target_name = intrinsic::StringInterner::Get().Intern(
+            math_func->GenerateVectorizedFunctionName(target_types));
+        absl::string_view vec_name = intrinsic::StringInterner::Get().Intern(
+            math_func->GenerateVectorizedFunctionName(vector_types));
+        targets_[vec_name] = math_func->FunctionName();
+        if (target_name == vec_name) {
+          continue;
+        }
+        size_t vector_width = vector_types.front().vector_width().value_or(1);
+        toolchain::VecDesc vec_desc = {
+            target_name,
+            vec_name,
+            toolchain::ElementCount::getFixed(vector_width),
+            false,
+            intrinsic::StringInterner::Get().Intern(
+                math_func->GenerateMangledSimdPrefix(vector_types)),
+            std::nullopt};
+        vec_descs.push_back(vec_desc);
+      }
+    }
+  }
+  return vec_descs;
+}
+
+void CreateDefinitionAndReplaceDeclaration(toolchain::Module& module,
+                                           absl::string_view name,
+                                           absl::string_view features,
+                                           IntrinsicFunction& math_func) {
+  // The Vectorization pass may have already inserted a declaration
+  // of this function that we need to rename and later remove to avoid
+  // name collisions.
+  toolchain::Function* existing_func = module.getFunction(name);
+  if (existing_func && existing_func->isDeclaration()) {
+    existing_func->setName(std::string(name) + ".old_decl");
+  }
+  toolchain::Function* definition =
+      math_func.CreateDefinition(module, features, name);
+  definition->setLinkage(toolchain::Function::InternalLinkage);
+  definition->addFnAttr(toolchain::Attribute::AlwaysInline);
+  toolchain::verifyFunction(*definition);
+  if (existing_func && existing_func->isDeclaration()) {
+    // Remove the declaration and replace all uses with the
+    // new definition.
+    existing_func->replaceAllUsesWith(definition);
+    existing_func->eraseFromParent();
+  }
+}
+
+absl::flat_hash_set<absl::string_view>
+IntrinsicFunctionLib::RewriteIntrinsicFunctions(toolchain::Module& module) {
+  // Find each called target function, generate the definition and insert it
+  // into the module.
+  // Keep track of the function names we replaced so we can remove them from
+  // toolchain.compiler.used later.
+  absl::flat_hash_set<absl::string_view> replaced_functions;
+  for (const auto& [function_name, signatures] :
+       GetCalledApproximatableFunctions(module, targets_)) {
+    for (const auto& math_func : intrinsic_functions_) {
+      if (math_func->FunctionName() == function_name) {
+        for (const auto& signature : signatures) {
+          CreateDefinitionAndReplaceDeclaration(module, signature, features_,
+                                                *math_func);
+          replaced_functions.insert(signature);
+        }
+      }
+    }
+  }
+
+  CHECK(!toolchain::verifyModule(module)) << "Module is invalid after optimization\n"
+                                     << llvm_ir::DumpToString(&module);
+  return replaced_functions;
+}
+
+}  // namespace xla::codegen

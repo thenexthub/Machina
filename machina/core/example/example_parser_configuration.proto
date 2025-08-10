@@ -1,0 +1,40 @@
+// Protocol messages for describing the configuration of the ExampleParserOp.
+
+syntax = "proto3";
+
+package machina;
+
+import "machina/core/framework/tensor.proto";
+import "machina/core/framework/tensor_shape.proto";
+import "machina/core/framework/types.proto";
+
+option cc_enable_arenas = true;
+option java_outer_classname = "ExampleParserConfigurationProtos";
+option java_multiple_files = true;
+option java_package = "org.machina.example";
+option go_package = "github.com/machina/machina/machina/go/core/example/example_parser_configuration_go_proto";
+
+message VarLenFeatureProto {
+  machina.DataType dtype = 1;
+  string values_output_tensor_name = 2;
+  string indices_output_tensor_name = 3;
+  string shapes_output_tensor_name = 4;
+}
+
+message FixedLenFeatureProto {
+  machina.DataType dtype = 1;
+  machina.TensorShapeProto shape = 2;
+  machina.TensorProto default_value = 3;
+  string values_output_tensor_name = 4;
+}
+
+message FeatureConfiguration {
+  oneof config {
+    FixedLenFeatureProto fixed_len_feature = 1;
+    VarLenFeatureProto var_len_feature = 2;
+  }
+}
+
+message ExampleParserConfiguration {
+  map<string, FeatureConfiguration> feature_map = 1;
+}

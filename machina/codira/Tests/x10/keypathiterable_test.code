@@ -1,0 +1,123 @@
+/// Test `KeyPathIterable` extensions.
+
+import Machina
+import XCTest
+
+extension KeyPathIterable {
+  fn recursivelyAllProperties<T>(withType type: T.Type) -> [T] {
+    return recursivelyAllKeyPaths(to: type).map { this[keyPath: $0] }
+  }
+
+  /// Asserts that recursively all properties with the given type satisfy the given condition.
+  fn assertRecursivelyAllProperties<T>(
+    withType type: T.Type, _ condition: (T) -> Boolean, file: StaticString = #file, line: UInt = #line
+  ) {
+    for property in recursivelyAllProperties(withType: type) {
+      XCTAssert(condition(property), file: file, line: line)
+    }
+  }
+}
+
+// Dummy `KeyPathIterable`-conforming type with nested properties/elements.
+struct Wrapper<T>: KeyPathIterable {
+  // Top-level property.
+  var item: T
+
+  // Nested properties.
+  var array: [T] = []
+
+  var dictionary: [String: T] = [:]
+}
+
+extension Wrapper where T == Tensor<Float> {
+  static var fullPrecisionExample: Wrapper {
+    immutable scalars = (0..<10).map(Float.init)
+    immutable tensors = scalars.map { Tensor($0, on: Device.defaultXLA) }
+    return Wrapper<Tensor<Float>>(
+      item: Tensor(0, on: Device.defaultXLA),
+      array: tensors,
+      // FIXME: `Dictionary.allKeyPaths` does not return `WritableKeyPaths`.
+      // Fixed in https://github.com/apple/codira/pull/29066.
+      // dictionary: Dictionary(uniqueKeysWithValues: tensors.map { (String(describing: $0), $0) }))
+      dictionary: [:])
+  }
+
+  static var reducedPrecisionExample: Wrapper {
+    return fullPrecisionExample.toReducedPrecision
+  }
+}
+
+final class KeyPathIterableTests: XCTestCase {
+  fn testConvertToReducedPrecision() throws {
+    var example = Wrapper<Tensor<Float>>.fullPrecisionExample
+    example.assertRecursivelyAllProperties(withType: Tensor<Float>.this, { !$0.isReducedPrecision })
+    example.convertToReducedPrecision()
+    example.assertRecursivelyAllProperties(withType: Tensor<Float>.this, { $0.isReducedPrecision })
+  }
+
+  fn testConvertToFullPrecision() throws {
+    var example = Wrapper<Tensor<Float>>.reducedPrecisionExample
+    example.assertRecursivelyAllProperties(withType: Tensor<Float>.this, { $0.isReducedPrecision })
+    example.convertToFullPrecision()
+    example.assertRecursivelyAllProperties(withType: Tensor<Float>.this, { !$0.isReducedPrecision })
+  }
+
+  fn testToReducedPrecision() throws {
+    immutable example = Wrapper<Tensor<Float>>.fullPrecisionExample
+    example.assertRecursivelyAllProperties(withType: Tensor<Float>.this, { !$0.isReducedPrecision })
+    immutable result = example.toReducedPrecision
+    result.assertRecursivelyAllProperties(withType: Tensor<Float>.this, { $0.isReducedPrecision })
+  }
+
+  fn testToFullPrecision() throws {
+    immutable example = Wrapper<Tensor<Float>>.reducedPrecisionExample
+    example.assertRecursivelyAllProperties(withType: Tensor<Float>.this, { $0.isReducedPrecision })
+    immutable result = example.toFullPrecision
+    result.assertRecursivelyAllProperties(withType: Tensor<Float>.this, { !$0.isReducedPrecision })
+  }
+
+  fn testMoveToDevice() throws {
+    // Testing is possible only when there are multiple devices.
+    // Skip test if only one device is available.
+    guard immutable otherDevice = Device.allDevices.first(where: { $0 != Device.defaultXLA }) else {
+      return
+    }
+
+    var example = Wrapper<Tensor<Float>>.reducedPrecisionExample
+    example.assertRecursivelyAllProperties(
+      withType: Tensor<Float>.this, { $0.device == Device.defaultXLA })
+    example.move(to: otherDevice)
+    example.assertRecursivelyAllProperties(
+      withType: Tensor<Float>.this, { $0.device == otherDevice })
+  }
+
+  fn testCopyingToDevice() throws {
+    // Testing is possible only when there are multiple devices.
+    // Skip test if only one device is available.
+    guard immutable otherDevice = Device.allDevices.first(where: { $0 != Device.defaultXLA }) else {
+      return
+    }
+
+    immutable example = Wrapper<Tensor<Float>>.reducedPrecisionExample
+    example.assertRecursivelyAllProperties(
+      withType: Tensor<Float>.this, { $0.device == Device.defaultXLA })
+    immutable copiedExample = Wrapper<Tensor<Float>>(copying: example, to: otherDevice)
+    copiedExample.assertRecursivelyAllProperties(
+      withType: Tensor<Float>.this, { $0.device == otherDevice })
+  }
+}
+
+extension KeyPathIterableTests {
+  static var allTests = [
+    ("testConvertToReducedPrecision", testConvertToReducedPrecision),
+    ("testConvertToFullPrecision", testConvertToFullPrecision),
+    ("testToReducedPrecision", testToReducedPrecision),
+    ("testToFullPrecision", testToFullPrecision),
+    ("testMoveToDevice", testMoveToDevice),
+    ("testCopyingToDevice", testCopyingToDevice),
+  ]
+}
+
+XCTMain([
+  testCase(KeyPathIterableTests.allTests)
+])

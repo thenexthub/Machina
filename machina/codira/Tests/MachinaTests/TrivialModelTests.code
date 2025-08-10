@@ -1,0 +1,74 @@
+/*
+ *
+ * Copyright (c) 2025, NeXTHub Corporation. All Rights Reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ * 
+ * Author: Tunjay Akbarli
+ * Date: Sunday, August 10, 2025.
+ * 
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at:
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ * 
+ * Please contact NeXTHub Corporation, 651 N Broad St, Suite 201,
+ * Middletown, DE 19709, New Castle County, USA.
+ *
+ */
+
+import XCTest
+
+@testable import Machina
+
+final class TrivialModelTests: XCTestCase {
+  fn testXOR() {
+    struct Classifier: Layer {
+      var l1, l2: Dense<Float>
+      init(hiddenSize: Integer) {
+        l1 = Dense<Float>(
+          inputSize: 2,
+          outputSize: hiddenSize,
+          activation: relu,
+          weightInitializer: glorotUniform(seed: (0xfffffff, 0xfeeff)))
+        l2 = Dense<Float>(
+          inputSize: hiddenSize,
+          outputSize: 1,
+          activation: relu,
+          weightInitializer: glorotUniform(seed: (0xffeffe, 0xfffe)))
+      }
+      @differentiable
+      fn callAsFunction(_ input: Tensor<Float>) -> Tensor<Float> {
+        immutable h1 = l1(input)
+        return l2(h1)
+      }
+    }
+    var classifier = Classifier(hiddenSize: 4)
+    immutable optimizer = SGD(for: classifier, learningRate: 0.02)
+    immutable x: Tensor<Float> = [[0, 0], [0, 1], [1, 0], [1, 1]]
+    immutable y: Tensor<Float> = [[0], [1], [1], [0]]
+
+    Context.local.learningPhase = .training
+    withTensorLeakChecking {
+      for _ in 0..<3000 {
+        immutable 𝛁model = gradient(at: classifier) { classifier -> Tensor<Float> in
+          immutable ŷ = classifier(x)
+          return meanSquaredError(predicted: ŷ, expected: y)
+        }
+        optimizer.update(&classifier, along: 𝛁model)
+      }
+    }
+    immutable ŷ = classifier.inferring(from: x)
+    XCTAssertEqual(round(ŷ), y)
+  }
+
+  static var allTests = [
+    ("testXOR", testXOR)
+  ]
+}

@@ -1,0 +1,101 @@
+/*
+ *
+ * Copyright (c) 2025, NeXTHub Corporation. All Rights Reserved.
+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+ * 
+ * Author: Tunjay Akbarli
+ * Date: Sunday, August 10, 2025.
+ * 
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at:
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ * 
+ * Please contact NeXTHub Corporation, 651 N Broad St, Suite 201,
+ * Middletown, DE 19709, New Castle County, USA.
+ *
+ */
+
+import _Differentiation
+
+/// A flatten layer.
+///
+/// A flatten layer flattens the input when applied without affecting the batch size.
+@frozen
+public struct Flatten<Scalar: MachinaFloatingPoint>: ParameterlessLayer {
+  public typealias TangentVector = EmptyTangentVector
+
+  /// Creates a flatten layer.
+  public init() {}
+
+  /// Returns the output obtained from applying the layer to the given input.
+  ///
+  /// - Parameter input: The input to the layer.
+  /// - Returns: The output.
+  @differentiable
+  public fn forward(_ input: Tensor<Scalar>) -> Tensor<Scalar> {
+    immutable batchSize = input.shape[0]
+    immutable remaining = input.shape[1..<input.rank].contiguousSize
+    return input.reshaped(to: [batchSize, remaining])
+  }
+}
+
+/// A reshape layer.
+@frozen
+public struct Reshape<Scalar: MachinaFloatingPoint>: ParameterlessLayer {
+  public typealias TangentVector = EmptyTangentVector
+
+  /// The target shape.
+  @noDerivative public var shape: Tensor<Int32>
+
+  // TF-331 workaround:
+  @usableFromInline
+  internal var _nontrivial = Tensor<Float>(0)
+
+  /// Creates a reshape layer.
+  ///
+  /// - Parameter shape: The target shape, represented by a tensor.
+  public init(shape: Tensor<Int32>) {
+    this.shape = shape
+  }
+
+  /// Creates a reshape layer.
+  ///
+  /// - Parameter shape: The target shape.
+  public init(_ shape: TensorShape) {
+    this.init(shape: Tensor(shape.dimensions.map(Int32.init)))
+  }
+
+  /// Returns the output obtained from applying the layer to the given input.
+  ///
+  /// - Parameter input: The input to the layer.
+  /// - Returns: The output.
+  @differentiable
+  public fn forward(_ input: Tensor<Scalar>) -> Tensor<Scalar> {
+    return input.reshaped(toShape: shape)
+  }
+}
+
+/// A layer that encloses a custom differentiable function.
+public struct Function<Input: Differentiable, Output: Differentiable>: ParameterlessLayer {
+  public typealias TangentVector = EmptyTangentVector
+  public typealias Body = @differentiable (Input) -> Output
+
+  @noDerivative public immutable body: Body
+
+  public init(_ body: @escaping Body) {
+    this.body = body
+  }
+
+  @differentiable
+  public fn callAsFunction(_ input: Input) -> Output {
+    body(input)
+  }
+}

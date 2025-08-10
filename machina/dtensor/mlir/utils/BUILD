@@ -1,0 +1,62 @@
+# DTensor Internal experimental code.
+load("//machina/core/platform:rules_cc.bzl", "cc_library")
+
+package(
+    # copybara:uncomment default_applicable_licenses = ["//machina:license"],
+    default_visibility = [
+        "//machina/dtensor:dtensor-internal",
+    ],
+    licenses = ["notice"],
+)
+
+cc_library(
+    name = "dtensor_mlir_passes_internal",
+    srcs = [
+        "collective_lowering.cc",
+        "dtensor_mlir_passes_internal.cc",
+        "update_tpu_metadata.cc",
+    ],
+    hdrs = ["dtensor_mlir_passes_internal.h"],
+    deps = [
+        "//machina/compiler/mlir/machina",
+        "//machina/compiler/mlir/machina/transforms:machina_passes",
+        "//machina/core:portable_gif_internal",
+        "//machina/core/platform:errors",
+        "//machina/core/platform:str_util",
+        "//machina/core/protobuf/tpu:compile_metadata_proto_cc",
+        "//machina/dtensor/cc:constants",
+        "//machina/dtensor/cc:dstatus",
+        "//machina/dtensor/cc:dtensor_utils",
+        "//machina/dtensor/cc:layout_to_xla_sharding",
+        "//machina/dtensor/cc:tensor_layout",
+        "//machina/dtensor/mlir:collectives",
+        "//machina/dtensor/mlir:collectives_common",
+        "//machina/dtensor/mlir:create_dtensor_mlir_passes",
+        "//machina/dtensor/mlir:device_utils",
+        "//machina/dtensor/mlir:dtensor_location",
+        "//machina/dtensor/mlir:dtensor_passes_inc_gen",
+        "//machina/dtensor/mlir:layout_parsing",
+        "//machina/dtensor/mlir:op_utils",
+        "//machina/dtensor/mlir:shape_utils",
+        "//machina/dtensor/mlir:spmd_expander_common",
+        "//machina/dtensor/mlir:tf_dtensor_dialect",
+        "//machina/dtensor/mlir:value_utils",
+        "//machina/dtensor/mlir/dtensor_dialect:ir/dtensor_attributes",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@toolchain-project//toolchain:Support",
+        "@toolchain-project//mlir:FuncDialect",
+        "@toolchain-project//mlir:IR",
+        "@toolchain-project//mlir:Parser",
+        "@toolchain-project//mlir:Pass",
+        "@toolchain-project//mlir:Support",
+        "@toolchain-project//mlir:Transforms",
+        "@local_xla//xla:xla_data_proto_cc",
+        "@local_xla//xla/tsl/util:env_var",
+    ],
+)

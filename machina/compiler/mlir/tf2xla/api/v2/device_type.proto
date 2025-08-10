@@ -1,0 +1,11 @@
+syntax = "proto2";
+
+package machina.tf2xla.v2;
+
+// The requested device type to compile for.
+enum DeviceType {
+  DEVICE_TYPE_UNSPECIFIED = 0;
+  MACHINA_XLATPU_JIT = 1;
+  MACHINA_XLACPU_JIT = 2;
+  MACHINA_XLAGPU_JIT = 3;
+}

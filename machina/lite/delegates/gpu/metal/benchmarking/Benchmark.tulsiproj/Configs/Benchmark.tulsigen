@@ -1,0 +1,16 @@
+{
+  "sourceFilters" : [
+    "machina/lite/delegates/gpu/...",
+    "machina/lite/delegates/gpu/metal/benchmarking/models",
+  ],
+  "buildTargets" : [
+    "//machina/lite/delegates/gpu/metal/benchmarking:iOSBenchmark",
+  ],
+  "projectName" : "Benchmark",
+  "additionalFilePaths" : [
+    "machina/lite/delegates/gpu/BUILD",
+    "machina/lite/delegates/gpu/metal/BUILD",
+    "machina/lite/delegates/gpu/metal/kernels/BUILD",
+    "machina/lite/delegates/gpu/metal/benchmarking/BUILD",
+  ]
+}
